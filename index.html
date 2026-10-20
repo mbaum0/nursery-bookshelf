@@ -64,7 +64,12 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
 figure.sheet{margin:8px 0 4px}
 figure.sheet svg{width:100%; height:auto; display:block}
 .ps{fill:var(--stage); stroke:var(--muted); stroke-width:.15}
-.pc{fill:var(--accent); fill-opacity:.14; stroke:var(--accent); stroke-width:.15}
+.pc{fill:var(--accent); fill-opacity:.06; stroke:var(--accent); stroke-width:.1}
+.pshape{fill:var(--accent); fill-opacity:.2; stroke:var(--accent); stroke-width:.15}
+.pbev{stroke:var(--accent); stroke-width:.2; stroke-dasharray:.7 .45}
+.pcut{stroke:#C0392B; stroke-width:.22}
+.pnum{fill:#C0392B}
+.pnt{font:650 1.1px var(--f-mono); fill:#fff; text-anchor:middle}
 .pl{font:650 2.6px var(--f-display); fill:var(--fg); text-anchor:middle}
 .pd{font:500 1.35px var(--f-mono); fill:var(--fg); text-anchor:middle}
 .pa{font:500 1.6px var(--f-mono); fill:var(--muted)}
@@ -76,7 +81,7 @@ figure.drawing + figure.drawing svg{max-height:22vh}
 figcaption{font-size:13px; line-height:1.5; color:var(--muted); margin-top:6px; max-width:72ch}
 .blank{fill:none; stroke:var(--muted); stroke-width:.06; stroke-dasharray:.4 .3}
 .side{fill:var(--stage); stroke:var(--fg); stroke-width:.08}
-.dado{fill:var(--accent); fill-opacity:.55; stroke:var(--accent); stroke-width:.04}
+.lay{fill:var(--accent); fill-opacity:.55; stroke:var(--accent); stroke-width:.04}
 .lead{fill:none; stroke:var(--muted); stroke-width:.04}
 .dl{font:500 .62px var(--f-mono); fill:var(--fg)}
 .dk{font:650 .75px var(--f-display); fill:var(--accent)}
@@ -207,26 +212,40 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   const IW = OW - 2*T;         // between sides
   const HB = 12;               // height of the cubby base (top surface)
   const FOOT = 1.6;            // underside of the cubby floor
-  const ARCH = 1;              // height of the arched foot cut-out; leaves a ledge under the floor's dado
-  const DADO = 0.25;           // depth of every dado (sides, cubby floor and top)
+  const ARCH = 1;              // height of the arched foot cut-out; leaves solid side under the cubby floor's screws
   const CLEAR = 0.125;         // clearance added to the baseboard cutaway
   const PLY = 0.25;            // cubby back panel thickness
-  const DEPTH = 16;            // overall depth; back edge sits on the wall
-  const SLOPE_DEG = 25;        // side panels' front edge above the base, back from vertical (steepest 5° step that fits the depth)
+  const SLOPE_DEG = 25;        // side panels' front edge above the base, back from vertical
   const S = Math.tan(SLOPE_DEG * Math.PI / 180);
   const TOPZ = S * (OH - HB);  // depth of the side panels' sloped front at the top
   const LEAN_DEG = 5;          // lean of each tier board back from vertical (a whole 5° for easy saw setups)
   const LEAN = LEAN_DEG * Math.PI / 180;
   const K = Math.tan(LEAN);
-  // back panel top sits up to ½ in behind the sides' front edge, as long as its back face stays ⅛ in off the wall
-  const BACK_INSET = Math.min(0.5, DEPTH - 0.125 - T / Math.cos(LEAN) - TOPZ);
   const NB = 4;                              // 3 tiers + back panel
   // tier heights as fractions of the height above the cubby base, so the tiers re-space when OH changes
   const above = f => HB + f * (OH - HB);
   const tops = [0.3, 0.6, 0.85, 0.9875].map(above);
   const bottoms = [HB, HB, above(0.325), above(0.575)];   // pocket floors: cubby top, then shelves
-  const zTop = i => i === NB - 1 ? TOPZ + BACK_INSET : S * (tops[i] - HB);   // depth of tier top (positive = back)
-  const zAt = (i, y) => zTop(i) - K * (tops[i] - y);            // face plane depth at height y
+
+  // Every pocket is the same depth (POCKET): the front tier's top sits on the sides' sloped front edge, and each
+  // board behind stands POCKET behind the back face of the one in front, measured at its pocket floor.
+  // POCKET is the smallest 1/8 in that keeps every board's top behind that sloped edge.
+  const BACK = T / Math.cos(LEAN);           // board thickness measured level
+  const faceAt = P => {                      // z of each board's front face at its bottom edge, for pocket depth P
+    const zb = [S * (tops[0] - HB) - K * (tops[0] - bottoms[0])];
+    for (let i = 1; i < NB; i++) zb.push(zb[i-1] + K * (bottoms[i] - bottoms[i-1]) + BACK + P);
+    return zb;
+  };
+  const POCKET = Math.ceil(8 * Math.max(0, ...tops.map((top, i) => {
+    if (!i) return 0;
+    const z0 = faceAt(0)[i] + K * (top - bottoms[i]);   // top of board i with no pocket; it moves back i·P per inch of P
+    return (S * (top - HB) - z0) / i;
+  }))) / 8;
+  const zb = faceAt(POCKET);
+  const zAt = (i, y) => zb[i] + K * (y - bottoms[i]);            // face plane depth at height y (positive = back)
+  const zTop = i => zAt(i, tops[i]);                               // depth of each board's top
+  // overall depth: the back panel's top back corner plus ⅛ in to the wall, rounded up to ¼ in
+  const DEPTH = Math.ceil(4 * (zTop(NB - 1) + BACK + 0.125)) / 4;
 
   const WOODS = [
     {name:'Walnut',    base:'#56301A', dark:'#2C160A', light:'#7A4A2C'},
@@ -365,7 +384,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   }
   const extrude = (shape) => new THREE.ExtrudeGeometry(shape, {depth:T, bevelEnabled:true, bevelThickness:0.06, bevelSize:0.06, bevelSegments:2, curveSegments:24});
 
-  const footEndZ = () => Math.min(14.1, DEPTH - notchD() - 1.25);   // back end of the foot arch
+  const footEndZ = () => DEPTH - notchD() - 1.25;   // back end of the foot arch: the rear foot is 1¼ in wide
   function sideShape(){
     // u = depth (back is +), v = height
     const s = new THREE.Shape();
@@ -412,21 +431,21 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       m.position.x = side * (IW/2) + (side < 0 ? -T : 0);
     });
 
-    // dado grooves on the left side's inside face; hidden except in the assembly drawings
-    const groove = new THREE.MeshStandardMaterial({color:'#2A1A10', roughness:0.9});
-    const dado = (geo, y, z, lean) => {
+    // layout marks for each part on the left side's inside face; hidden except in the assembly drawings
+    const groove = new THREE.MeshStandardMaterial({color:'#D9C7A8', roughness:0.9});
+    const mark = (geo, y, z, lean) => {
       const m = new THREE.Mesh(geo, groove);
-      m.userData.part = 'dado'; m.visible = false;
+      m.userData.part = 'marks'; m.visible = false;
       m.rotation.x = lean ? -LEAN : 0;
       m.position.set(-IW/2 + 0.08, y, z);   // just proud of the side's face, which its 0.06 in edge bevel pushes inward
       model.add(m);
     };
     [[FOOT + T, 0, CD], [HB, 0, CD], ...[1, 2].map(i => { const s = shelf(i); return [s.y, s.front, s.front + s.depth]; })]
-      .forEach(([yTop, a, b]) => dado(new THREE.BoxGeometry(0.04, T, b - a), yTop - T/2, -(a + b)/2));
+      .forEach(([yTop, a, b]) => mark(new THREE.BoxGeometry(0.04, T, b - a), yTop - T/2, -(a + b)/2));
     tops.forEach((top, i) => {
-      const stop = i < NB - 1 || state.back ? top - d * Math.cos(LEAN) : top, len = (stop - bottoms[i]) / Math.cos(LEAN);
+      const len = (top - bottoms[i]) / Math.cos(LEAN);
       const g = new THREE.BoxGeometry(0.04, len, T); g.translate(0, len/2, -T/2);
-      dado(g, bottoms[i], -zAt(i, bottoms[i]), true);
+      mark(g, bottoms[i], -zAt(i, bottoms[i]), true);
     });
 
     // cubby base: floor, top, two dividers, thin back
@@ -526,15 +545,15 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   }
   const range = (a, b) => frac(a) + ' → ' + frac(b);
   function cutList(){
-    const c = Math.cos(LEAN), L = IW + 2*DADO, CD = cubbyDepth(), d = scallopDepth(), span = IW / state.count;
+    const c = Math.cos(LEAN), L = IW, CD = cubbyDepth(), d = scallopDepth(), span = IW / state.count;   // parts butt between the sides
     const deg = LEAN_DEG;
     const names = ['Tier 1 (front)', 'Tier 2', 'Tier 3', 'Back panel'];
     const scalloped = i => i < NB - 1 || state.back;
     const parts = [
-      {id:'A', name:'Side', qty:2, t:T, w:DEPTH, l:OH, ang:'Front edge ' + SLOPE_DEG + '° from vertical. Tier dadoes ' + deg + '° from vertical', note:'Grain vertical. Mirror pair: dadoes on the inside faces'},
-      {id:'B', name:'Cubby floor', qty:1, t:T, w:CD, l:L, ang:'Square', note:'Divider dadoes in the top face'},
-      {id:'C', name:'Cubby top', qty:1, t:T, w:CD, l:L, ang:'Square', note:'Divider dadoes in the bottom face. Round the front corners to the side curve'},
-      {id:'D', name:'Divider', qty:2, t:T, w:CD, l:innerH + 2*DADO, ang:'Square', note:'Grain vertical'},
+      {id:'A', name:'Side', qty:2, t:T, w:DEPTH, l:OH, ang:'Front edge ' + SLOPE_DEG + '° from vertical. Tier layout lines ' + deg + '° from vertical', note:'Grain vertical. Mirror pair: layout lines on the inside faces'},
+      {id:'B', name:'Cubby floor', qty:1, t:T, w:CD, l:L, ang:'Square', note:'Pocket holes in the bottom face'},
+      {id:'C', name:'Cubby top', qty:1, t:T, w:CD, l:L, ang:'Square', note:'Pocket holes in the bottom face. Round the front corners to the side curve'},
+      {id:'D', name:'Divider', qty:2, t:T, w:CD, l:innerH, ang:'Square', note:'Grain vertical. Screwed through B and C'},
       {id:'E', name:'Cubby back', qty:1, t:PLY, w:HB - FOOT, l:IW, ply:true, ang:'Square', note:'Plywood. Glue and brad to B, C and D'}
     ];
     tops.forEach((top, i) => parts.push({id:'FGHJ'[i], name:names[i], qty:1, t:T, w:(top - bottoms[i]) / c, l:L, ang:'Bottom edge ' + deg + '° bevel',
@@ -547,18 +566,25 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       p.bf = p.qty * p.rw * p.rl / 144;   // 4/4 rough stock
     });
 
-    // dadoes, laid out on the rectangular 16 × 32 side blank from its bottom and front edges
-    const dadoes = [
-      {part:'B', what:'Cubby floor', h:range(FOOT, FOOT + T), z:range(0, CD), note:'Runs out the front edge'},
-      {part:'C', what:'Cubby top', h:range(HB - T, HB), z:range(0, CD), note:'Runs out the front edge'},
-      ...[1, 2].map((i, k) => { const s = shelf(i); return {part:'KL'[k], what:'Shelf ' + (k + 1), h:range(s.y - T, s.y), z:range(s.front, s.front + s.depth), note:''}; }),
-      ...tops.map((top, i) => {
-        const stop = scalloped(i) ? top - d * c : top;
-        return {part:'FGHJ'[i], what:names[i], h:range(bottoms[i], stop), z:range(zAt(i, bottoms[i]), zAt(i, stop)),
-          note:'Front face line, leaning ' + deg + '° back. Dado runs behind it. Stopped' + (scalloped(i) ? ' at the scallop valleys' : ' at the top')};
-      })
+    // layout lines for each part on the side blank, measured from its bottom and front edges
+    const lines = [
+      {part:'B', what:'Cubby floor', h:range(FOOT, FOOT + T), z:range(0, CD), note:'Bottom face on the lower line, front flush with the front edge'},
+      {part:'C', what:'Cubby top', h:range(HB - T, HB), z:range(0, CD), note:'Top face on the upper line, front flush with the front edge'},
+      ...[1, 2].map((i, k) => { const s = shelf(i); return {part:'KL'[k], what:'Shelf ' + (k + 1), h:range(s.y - T, s.y), z:range(s.front, s.front + s.depth), note:'Top face on the upper line'}; }),
+      ...tops.map((top, i) => ({part:'FGHJ'[i], what:names[i], h:range(bottoms[i], top), z:range(zAt(i, bottoms[i]), zTop(i)),
+        note:'Front face line, leaning ' + deg + '° back. The board sits behind it'}))
     ];
-    const dividers = [0, 1].map(j => range(DADO + openW + j * (openW + T), DADO + openW + j * (openW + T) + T));
+    const dividers = [0, 1].map(j => range(openW + j * (openW + T), openW + j * (openW + T) + T));
+
+    // pocket holes: every part screws to the sides from a face you won't see; tiers also screw down into the floor below
+    const per = w => w < 4 ? 1 : w < 10 ? 2 : 3;
+    const floorUnder = ['C', 'C', 'K', 'L'];
+    const holes = [
+      ...['B', 'C'].map(id => ({part:id, face:'Bottom face, ' + per(CD) + ' at each end', n:2 * per(CD), into:'Sides'})),
+      ...tops.map((top, i) => ({part:'FGHJ'[i], face:'Back face, ' + per(parts[5 + i].w) + ' at each end', n:2 * per(parts[5 + i].w), into:'Sides'})),
+      ...tops.map((top, i) => ({part:'FGHJ'[i], face:'Back face, along the bottom edge', n:Math.ceil(IW / 10), into:floorUnder[i]})),
+      ...[1, 2].map((i, k) => ({part:'KL'[k], face:'Bottom face, ' + per(shelf(i).depth) + ' at each end', n:2 * per(shelf(i).depth), into:'Sides'}))
+    ];
     const fe = footEndZ(), nz = DEPTH - notchD();
     const profile = [
       ['Front foot', range(0, 2.25), 'On the floor'],
@@ -570,7 +596,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       ['Front slope', range(0.5*S, TOPZ - 0.6*S), 'Straight at ' + SLOPE_DEG + '° from vertical, from ' + frac(HB + 0.5) + ' up to ' + frac(OH - 0.6) + ' high, eased at both ends'],
       ['Front of base', '0', range(0, HB - 0.6) + ' high, vertical']
     ];
-    return {parts, dadoes, dividers, profile};
+    return {parts, lines, dividers, profile, holes};
   }
 
   const esc = s => String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'})[ch]);
@@ -595,7 +621,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     }
     let best = null;
     orders.forEach(order => [0, 1].forEach(splitRule => {
-      const sheets = [], add = () => { sheets.push({free:[{x:0, y:0, w:SHEET_W + KERF, h:SHEET_L + KERF}], placed:[]}); };
+      const sheets = [], add = () => { sheets.push({free:[{x:0, y:0, w:SHEET_W + KERF, h:SHEET_L + KERF}], placed:[], cuts:[]}); };
       add();
       for (const it of order){
         // parts are never turned: each part's length (its grain) runs along the sheet's face grain
@@ -610,12 +636,17 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
         const sh = sheets[pick.si], f = sh.free.splice(pick.fi, 1)[0];
         sh.placed.push({id:it.id, w:it.w, l:it.l, x:f.x, y:f.y});
         const rw = f.w - pick.pw, rh = f.h - pick.ph;
-        if (splitRule ? rw < rh : rw >= rh){   // guillotine: every cut runs edge to edge of its offcut
-          if (rh > 0) sh.free.push({x:f.x, y:f.y + pick.ph, w:f.w, h:rh});
-          if (rw > 0) sh.free.push({x:f.x + pick.pw, y:f.y, w:rw, h:pick.ph});
-        } else {
-          if (rw > 0) sh.free.push({x:f.x + pick.pw, y:f.y, w:rw, h:f.h});
-          if (rh > 0) sh.free.push({x:f.x, y:f.y + pick.ph, w:pick.pw, h:rh});
+        // every cut runs edge to edge of the piece it splits (guillotine), so the order they're made in here is a
+        // valid order to saw them: a piece is always split after the cut that freed it
+        const fw = f.w - KERF, fh = f.h - KERF, xc = f.x + it.w + KERF/2, yc = f.y + it.l + KERF/2;
+        const cross = (w, x0) => sh.cuts.push({kind:'Crosscut', x1:x0, y1:yc, x2:x0 + w, y2:yc, piece:[w, 0], at:it.l});
+        const rip = (h) => sh.cuts.push({kind:'Rip', x1:xc, y1:f.y, x2:xc, y2:f.y + h, piece:[0, h], at:it.w});
+        if (splitRule ? rw < rh : rw >= rh){   // crosscut the whole piece first, then rip the part off its strip
+          if (rh > 0){ sh.free.push({x:f.x, y:f.y + pick.ph, w:f.w, h:rh}); cross(fw, f.x); sh.cuts[sh.cuts.length - 1].piece = [fw, fh]; }
+          if (rw > 0){ sh.free.push({x:f.x + pick.pw, y:f.y, w:rw, h:pick.ph}); rip(it.l); sh.cuts[sh.cuts.length - 1].piece = [fw, rh > 0 ? it.l : fh]; }
+        } else {                                // rip the whole piece first, then crosscut the part off its strip
+          if (rw > 0){ sh.free.push({x:f.x + pick.pw, y:f.y, w:rw, h:f.h}); rip(fh); sh.cuts[sh.cuts.length - 1].piece = [fw, fh]; }
+          if (rh > 0){ sh.free.push({x:f.x, y:f.y + pick.ph, w:pick.pw, h:rh}); cross(it.w, f.x); sh.cuts[sh.cuts.length - 1].piece = [rw > 0 ? it.w : fw, fh]; }
         }
       }
       // fewest sheets, then matching pieces (both sides, both dividers) cut from one sheet so grain and colour match,
@@ -624,31 +655,46 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       const split = new Set(), seen = {};
       sheets.forEach((sh, si) => sh.placed.forEach(p => { if (p.id in seen && seen[p.id] !== si) split.add(p.id); seen[p.id] = si; }));
       const cost = sheets.length * 1e6 + split.size * 1e4 + used;
-      if (!best || cost < best.cost) best = {cost, sheets:sheets.map(sh => sh.placed)};
+      if (!best || cost < best.cost) best = {cost, sheets:sheets.map(sh => ({parts:sh.placed, cuts:sh.cuts}))};
     }));
     packCache = {key, result:best.sheets};
     return best.sheets;
   }
-  function sheetSVG(placed, n, total){
-    // drawn landscape: the sheet's 96 in length (and face grain) runs left to right
-    const r = placed.map(p => {
+  function sheetSVG(sheet, n, total){
+    // drawn landscape: the sheet's 96 in length (and face grain) runs left to right; a part's length runs along X
+    const d = scallopDepth(), shapes = {A:sideShape().getPoints(16)};
+    tops.forEach((top, i) => { shapes['FGHJ'[i]] = tierShape(IW, (top - bottoms[i]) / Math.cos(LEAN), i < NB - 1 || state.back ? state.count : 0, d).getPoints(8); });
+    const parts = sheet.parts.map(p => {
       const X = p.y, Y = p.x, W = p.l, H = p.w, cx = X + W/2, cy = Y + H/2;
       const dims = frac(p.w) + ' × ' + frac(p.l);
+      // final shape: sides map height → X and depth → Y; tiers map their length → X and height → Y (scallops at the far edge)
+      const pts = p.id === 'A' ? shapes.A.map(q => [X + q.y, Y + q.x]) : shapes[p.id] ? shapes[p.id].map(q => [X + q.x, Y + q.y])
+        : [[X, Y], [X + W, Y], [X + W, Y + H], [X, Y + H]];   // plain rectangles are finished once they're sawn free
+      const shape = '<polygon points="' + pts.map(q => q[0].toFixed(2) + ',' + q[1].toFixed(2)).join(' ') + '" class="pshape"/>';
+      const bevel = 'FGHJKL'.includes(p.id) ? '<line x1="' + X + '" y1="' + (Y + 0.25) + '" x2="' + (X + W) + '" y2="' + (Y + 0.25) + '" class="pbev"/>' : '';
       const label = H >= 5
         ? '<text x="' + cx + '" y="' + (cy - 0.4) + '" class="pl">' + p.id + '</text><text x="' + cx + '" y="' + (cy + 1.9) + '" class="pd">' + dims + '</text>'
         : '<text x="' + cx + '" y="' + (cy + 0.5) + '" class="pd">' + p.id + '  ' + dims + '</text>';
-      return '<rect x="' + X + '" y="' + Y + '" width="' + W + '" height="' + H + '" class="pc"><title>' + p.id + ' ' + dims + '</title></rect>' + label;
+      return '<rect x="' + X + '" y="' + Y + '" width="' + W + '" height="' + H + '" class="pc"><title>' + p.id + ' ' + dims + '</title></rect>' + shape + bevel + label;
     }).join('');
-    return '<figure class="sheet"><svg viewBox="-1 -5 98 55" role="img" aria-label="Sheet ' + n + ' of ' + total + ': cutting layout on a 4 by 8 foot sheet">' +
+    const cuts = sheet.cuts.map((c, k) => {
+      const X1 = c.y1, Y1 = c.x1, X2 = c.y2, Y2 = c.x2, mx = (X1 + X2) / 2, my = (Y1 + Y2) / 2;
+      return '<line x1="' + X1 + '" y1="' + Y1 + '" x2="' + X2 + '" y2="' + Y2 + '" class="pcut"/>' +
+        '<circle cx="' + mx + '" cy="' + my + '" r="1.05" class="pnum"/><text x="' + mx + '" y="' + (my + 0.42) + '" class="pnt">' + (k + 1) + '</text>';
+    }).join('');
+    return '<figure class="sheet"><svg viewBox="-1 -5 98 55" role="img" aria-label="Sheet ' + n + ' of ' + total + ': numbered saw cuts and part shapes on a 4 by 8 foot sheet">' +
       '<text x="0" y="-1.6" class="pa">Sheet ' + n + (total > 1 ? ' of ' + total : '') + ' · 48 × 96 in · face grain →</text>' +
-      '<rect x="0" y="0" width="' + SHEET_L + '" height="' + SHEET_W + '" class="ps"/>' + r + '</svg></figure>';
+      '<rect x="0" y="0" width="' + SHEET_L + '" height="' + SHEET_W + '" class="ps"/>' + parts + cuts + '</svg>' +
+      '<figcaption>Red numbered lines are the straight saw cuts, in order. Shaded outlines are the final shapes, cut with a jigsaw or bandsaw once the part is free. A dashed edge gets the ' + LEAN_DEG + '° bevel.</figcaption></figure>' +
+      table(['Cut', 'Type', 'Piece being cut (W × L)', 'Cut off'], sheet.cuts.map((c, k) => [k + 1, c.kind + (c.kind === 'Rip' ? ' (with the grain)' : ' (across the grain)'),
+        frac(c.piece[0]) + ' × ' + frac(c.piece[1]), frac(c.at) + (c.kind === 'Rip' ? ' wide strip, from the edge' : ' long, from the end')]));
   }
 
-  // ---- dado layout drawings ----
+  // ---- layout drawings ----
   function sideSVG(){
     // left side, inside face: front at the left, as you see it standing inside the case
     const Y = v => OH - v, pt = ([u, v]) => u.toFixed(3) + ',' + Y(v).toFixed(3);
-    const c = Math.cos(LEAN), d = scallopDepth(), CD = cubbyDepth(), back = T / c;
+    const c = Math.cos(LEAN), CD = cubbyDepth(), back = T / c;
     const items = [];
     const flat = (id, a, b, yTop) => items.push({id, poly:[[a, yTop - T], [b, yTop - T], [b, yTop], [a, yTop]], at:[b, yTop - T/2],
       text:id + '  ' + frac(yTop - T) + '–' + frac(yTop) + ' up, ' + frac(a) + '–' + frac(b) + ' back'});
@@ -656,7 +702,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     flat('C', 0, CD, HB);
     [1, 2].forEach((i, k) => { const sh = shelf(i); flat('KL'[k], sh.front, sh.front + sh.depth, sh.y); });
     tops.forEach((top, i) => {
-      const stop = i < NB - 1 || state.back ? top - d * c : top, z0 = zAt(i, bottoms[i]), z1 = zAt(i, stop);
+      const stop = top, z0 = zAt(i, bottoms[i]), z1 = zAt(i, stop);
       items.push({id:'FGHJ'[i], poly:[[z0, bottoms[i]], [z1, stop], [z1 + back, stop], [z0 + back, bottoms[i]]], at:[z1 + back, stop - 0.4],
         text:'FGHJ'[i] + '  ' + frac(z0) + ' back at ' + frac(bottoms[i]) + ' up, ' + LEAN_DEG + '° to ' + frac(stop)});
     });
@@ -666,27 +712,27 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     let prev = -Infinity;
     items.forEach(it => { it.ly = Math.max(Y(it.at[1]), prev + GAP); prev = it.ly; });
     const shape = sideShape().getPoints(16).map(p => pt([p.x, p.y])).join(' ');
-    return '<figure class="drawing"><svg viewBox="-3.5 -2 35 37" role="img" aria-label="Left side panel, inside face, with every dado drawn to scale">' +
+    return '<figure class="drawing"><svg viewBox="-3.5 -2 ' + (DEPTH + 21) + ' ' + (OH + 5) + '" role="img" aria-label="Left side panel, inside face, with every part\'s layout lines drawn to scale">' +
       '<rect x="0" y="0" width="' + DEPTH + '" height="' + OH + '" class="blank"/>' +
       '<polygon points="' + shape + '" class="side"/>' +
-      items.map(it => '<polygon points="' + it.poly.map(pt).join(' ') + '" class="dado"/>' +
+      items.map(it => '<polygon points="' + it.poly.map(pt).join(' ') + '" class="lay"/>' +
         '<polyline points="' + pt(it.at) + ' ' + (LX - 0.3) + ',' + it.ly.toFixed(3) + '" class="lead"/>' +
         '<text x="' + LX + '" y="' + (it.ly + 0.28).toFixed(3) + '" class="dl"><tspan class="dk">' + it.id + '</tspan>' + esc(it.text.slice(1)) + '</text>').join('') +
       '<line x1="0" y1="' + (OH + 1) + '" x2="' + DEPTH + '" y2="' + (OH + 1) + '" class="dim"/><text x="' + DEPTH/2 + '" y="' + (OH + 2.3) + '" class="dt">' + frac(DEPTH) + ' (front → back)</text>' +
       '<line x1="-1" y1="0" x2="-1" y2="' + OH + '" class="dim"/><text x="-1.6" y="' + OH/2 + '" class="dt" transform="rotate(-90 -1.6 ' + OH/2 + ')">' + frac(OH) + '</text>' +
       '<text x="0.3" y="-0.7" class="dc">FRONT</text><text x="' + (DEPTH - 0.3) + '" y="-0.7" class="dc" text-anchor="end">BACK</text>' +
-      '</svg><figcaption>Left side, inside face, to scale. The dashed box is the ' + frac(DEPTH) + ' × ' + frac(OH) + ' blank you measure from: heights from its bottom edge, distances back from its front edge. Tier dadoes are drawn from their front face line. The right side is a mirror image.</figcaption></figure>';
+      '</svg><figcaption>Left side, inside face, to scale. The dashed box is the ' + frac(DEPTH) + ' × ' + frac(OH) + ' blank you measure from: heights from its bottom edge, distances back from its front edge. Each tier is drawn from its front face line back. The right side is a mirror image.</figcaption></figure>';
   }
   function dividerSVG(){
-    const L = IW + 2*DADO, CD = cubbyDepth();
-    const xs = [0, 1].map(j => DADO + openW + j * (openW + T));
-    return '<figure class="drawing"><svg viewBox="-1 -3.2 ' + (L + 2) + ' ' + (CD + 6) + '" role="img" aria-label="Cubby floor seen from above, with the two divider dadoes">' +
+    const L = IW, CD = cubbyDepth();
+    const xs = [0, 1].map(j => openW + j * (openW + T));
+    return '<figure class="drawing"><svg viewBox="-1 -3.2 ' + (L + 2) + ' ' + (CD + 6) + '" role="img" aria-label="Cubby floor seen from above, with where the two dividers go">' +
       '<rect x="0" y="0" width="' + L + '" height="' + CD + '" class="side"/>' +
-      xs.map(x => '<rect x="' + x + '" y="0" width="' + T + '" height="' + CD + '" class="dado"/>' +
+      xs.map(x => '<rect x="' + x + '" y="0" width="' + T + '" height="' + CD + '" class="lay"/>' +
         '<line x1="0" y1="' + (-1.2 - (x > L/2 ? 1.2 : 0)) + '" x2="' + x + '" y2="' + (-1.2 - (x > L/2 ? 1.2 : 0)) + '" class="dim"/>' +
         '<text x="' + (x - 0.3) + '" y="' + (-1.5 - (x > L/2 ? 1.2 : 0)) + '" class="dt" text-anchor="end">' + frac(x) + '</text>').join('') +
-      '<text x="' + L/2 + '" y="' + (CD + 1.6) + '" class="dt">' + frac(L) + ' long · dadoes ' + frac(T) + ' wide, ' + frac(DADO) + ' deep · ' + frac(CD) + ' front to back</text>' +
-      '</svg><figcaption>Cubby floor (B), top face, measured from the left end. Cut the same dadoes in the bottom face of the cubby top (C).</figcaption></figure>';
+      '<text x="' + L/2 + '" y="' + (CD + 1.6) + '" class="dt">' + frac(L) + ' long · dividers ' + frac(T) + ' thick · ' + frac(CD) + ' front to back</text>' +
+      '</svg><figcaption>Cubby floor (B), top face, measured from the left end. Mark the same positions on the bottom face of the cubby top (C).</figcaption></figure>';
   }
 
   // ---- assembly steps: the model rendered part by part ----
@@ -700,13 +746,13 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     back:   stepCam([0, 0.34 * OH, -DEPTH/2], [-42, 18, -64])
   };
   const STEPS = [
-    {add:['A1', 'dado'], cam:'inside', text:'Cut the dadoes in both sides, using the drawings above. The left side is shown; the right side is its mirror image.'},
-    {add:['B', 'C', 'D'], text:'Glue the dividers (D) into the cubby floor (B) and cubby top (C). Check that each opening is square.'},
-    {add:['A1'], text:'Lay the left side (A) flat, inside face up, and glue the cubby box into its dadoes.'},
-    {add:['F', 'G'], text:'Slide tiers F and G into their angled dadoes, standing on C. Glue only the bottom 2 in of each tier dado so the tiers can move.'},
-    {add:['K', 'H'], text:'Glue shelf K into its dadoes, then stand tier H on it.'},
-    {add:['L', 'J'], text:'Glue shelf L into its dadoes, then stand the back panel (J) on it.'},
-    {add:['A2'], text:'Lower the right side (A) on. Clamp across the case with cauls and check that the diagonals match.'},
+    {add:['A1', 'marks'], cam:'inside', text:'Draw the layout lines on both sides, using the drawings above, and drill every pocket hole. The left side is shown; the right side is its mirror image.'},
+    {add:['B', 'C', 'D'], text:'Screw the dividers (D) between the cubby floor (B) and cubby top (C), through B and C. Check that each opening is square.'},
+    {add:['A1'], text:'Stand the left side (A) up and glue and pocket-screw the cubby box to it on its lines.'},
+    {add:['F', 'G'], text:'Add tiers F and G on their lines, standing on C. Glue and screw them to the side and down into C.'},
+    {add:['K', 'H'], text:'Glue and screw shelf K on its lines, then tier H on top of it.'},
+    {add:['L', 'J'], text:'Glue and screw shelf L on its lines, then the back panel (J) on top of it.'},
+    {add:['A2'], text:'Set the right side (A) on, clamp it to its lines, and drive the pocket screws at the right-hand ends. Check that the diagonals match.'},
     {add:['E'], cam:'back', text:'From the back, glue and brad the cubby back (E) to B, C and D. It squares the cubby box.'}
   ];
   let stepImgs = [], stepTimer = 0;
@@ -748,40 +794,45 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   }
 
   function renderCutList(){
-    const {parts, dadoes, dividers, profile} = cutList();
+    const {parts, lines, dividers, profile, holes} = cutList();
+    const screws = holes.reduce((a, h) => a + h.n, 0);
     const sheets = packSheets(parts);
     const wood = state.finish.type === 'wood' ? WOODS[state.finish.i].name : 'paint-grade poplar or maple';
     const veneer = state.finish.type === 'wood' ? WOODS[state.finish.i].name.toLowerCase() + ' veneer plywood' : 'paint-grade plywood (birch or maple)';
     const bf = parts.reduce((a, p) => a + (p.bf || 0), 0);
     const e = parts.find(p => p.ply);
-    const last = sheets[sheets.length - 1], lastL = Math.max(...last.map(p => p.y + p.l)), lastW = Math.max(...last.map(p => p.x + p.w));
+    const last = sheets[sheets.length - 1].parts, lastL = Math.max(...last.map(p => p.y + p.l)), lastW = Math.max(...last.map(p => p.x + p.w));
     const smaller = lastW <= 24 && lastL <= 48 ? 'a 2 × 4 ft panel' : lastL <= 48 ? 'a 4 × 4 ft half sheet' : '';
     const halfNote = sheets.length > 1 && smaller ? 'Sheet ' + sheets.length + ' only needs ' + frac(lastW) + ' × ' + frac(lastL) + ' in, so ' + smaller + ' is enough for it. ' : '';
-    const where = id => { const at = []; sheets.forEach((pl, i) => pl.forEach(p => { if (p.id === id) at.push('Sheet ' + (i + 1)); })); return [...new Set(at)].join('; ') || '¼ in ply'; };
+    const where = id => { const at = []; sheets.forEach((sh, i) => sh.parts.forEach(p => { if (p.id === id) at.push('Sheet ' + (i + 1)); })); return [...new Set(at)].join('; ') || '¼ in ply'; };
     $('cutMeta').textContent = state.count + ' scallops · ' + frac(scallopDepth()) + ' in deep · back panel ' + (state.back ? 'scalloped' : 'straight') +
       ' · ' + $('finishName').textContent + ' · baseboard ' + frac(state.bbH) + ' × ' + frac(state.bbD) + ' in';
     $('cutBody').innerHTML =
       '<h3>Parts list</h3>' +
       table(['Part', 'Name', 'Qty', 'T', 'W', 'L (grain)', 'Notes'], parts.map(p => [p.id, p.name, p.qty, frac(p.t), frac(p.w), frac(p.l), p.note])) +
-      '<p class="fine">Finished sizes in inches, rounded to 1/16. L runs with the grain. B, C and F–L are ' + frac(IW + 2*DADO) +
-      ' long: ' + frac(IW) + ' between the sides plus a ' + frac(DADO) + ' tongue at each end. Tier widths are measured along the face, from the long point of the bevel to the scallop tips.</p>' +
+      '<p class="fine">Finished sizes in inches, rounded to 1/16. L runs with the grain. B, C and F–L are ' + frac(IW) +
+      ' long, the distance between the sides. Tier widths are measured along the face, from the long point of the bevel to the scallop tips.</p>' +
       '<h3>Cut list</h3>' +
       table(['Part', 'Qty', 'Width', 'Length', 'From', 'Angles'], parts.map(p => [p.id + ' ' + p.name, p.qty, frac(p.w), frac(p.l), where(p.id), p.ang])) +
-      '<p class="fine">Cut every part to its width and length square first, then cut the angles. Angles are measured from square, so a 5° bevel is the blade tilted 5°. Side profiles, scallops and dadoes come from the tables further down.</p>' +
+      '<p class="fine">Cut every part to its width and length square first, then cut the angles. Angles are measured from square, so a 5° bevel is the blade tilted 5°. Side profiles, scallops and layout lines come from the tables further down.</p>' +
       '<h3>Sheet layout</h3>' +
-      sheets.map((pl, i) => sheetSVG(pl, i + 1, sheets.length)).join('') +
+      sheets.map((sh, i) => sheetSVG(sh, i + 1, sheets.length)).join('') +
       '<p class="fine">' + sheets.length + ' sheet' + (sheets.length > 1 ? 's' : '') + ' of ' + frac(T) + ' in ' + esc(veneer) + ', with a ' + frac(KERF) +
-      ' in kerf between parts. Every cut runs edge to edge, so it works on a table saw or with a track saw. No part is turned to make it fit: every part\'s length runs with the sheet\'s face grain, so the grain matches the solid-wood design. ' + halfNote + 'Cut E (' + frac(e.w) + ' × ' + frac(e.l) +
+      ' in kerf between parts. Make the cuts in the numbered order: each one runs edge to edge of the piece in front of you, so it works on a table saw or with a track saw. No part is turned to make it fit: every part\'s length runs with the sheet\'s face grain, so the grain matches the solid-wood design. ' + halfNote + 'Cut E (' + frac(e.w) + ' × ' + frac(e.l) +
       ') from ' + frac(PLY) + ' in plywood. Plywood edges show their layers: edge-band the straight front edges, and fill and paint the scallops, or make F–J from solid wood for a clear finish.</p>' +
       '<details class="fine"><summary>Building from solid lumber instead</summary>' +
       table(['Part', 'Qty', 'Rough W × L', 'Boards per panel', 'Board feet'], parts.filter(p => !p.ply).map(p => [p.id + ' ' + p.name, p.qty, frac(p.rw) + ' × ' + frac(p.rl), p.boards, p.bf.toFixed(1)])) +
       '<p>Stock: ' + esc(wood) + ', 4/4 rough, milled to ' + frac(T) + ' in. Parts need ' + bf.toFixed(1) + ' bd ft. Buy about ' + Math.ceil(bf * 1.3) + ' bd ft to cover defects and offcuts.</p></details>' +
-      '<h3>Side dadoes</h3>' + sideSVG() + dividerSVG() +
-      table(['Part', 'For', 'Height (in)', 'From front (in)', 'Notes'], dadoes.map(x => [x.part, x.what, x.h, x.z, x.note])) +
-      '<p class="fine">All dadoes are ' + frac(DADO) + ' deep and as wide as your stock. Lay them out on the inside faces before you cut the profile, measuring from the blank\'s bottom and front edges. Divider dadoes in B (top face) and C (bottom face), measured from the left end: ' + dividers.join(' and ') + '.</p>' +
+      '<h3>Layout lines</h3>' + sideSVG() + dividerSVG() +
+      table(['Part', 'For', 'Height (in)', 'From front (in)', 'Notes'], lines.map(x => [x.part, x.what, x.h, x.z, x.note])) +
+      '<p class="fine">Draw these on the inside faces of both sides before you cut the profile, measuring from the blank\'s bottom and front edges. Divider positions on B (top face) and C (bottom face), measured from the left end: ' + dividers.join(' and ') + '.</p>' +
+      '<h3>Pocket holes</h3>' +
+      table(['Part', 'Where', 'Total', 'Screws into'], holes.map(h => [h.part, h.face, h.n, h.into])) +
+      '<p class="fine">Drill for ' + frac(T) + ' in stock and use 1¼ in pocket screws: ' + screws + ' in all, plus a few spares. Coarse thread for plywood and softwood, fine thread for hardwood. ' +
+      'Keep holes about 1½ in from each edge and spread the rest evenly. Fix each divider (D) with two countersunk 1¼ in screws up through B and two down through C, and plug the ones in C.</p>' +
       '<h3>Side profile</h3>' +
       table(['Feature', 'From front (in)', 'Height / notes'], profile) +
-      '<h3>Assembly</h3><p class="fine">New parts in each step are shown in wood; parts already in place are ghosted. Dry-fit everything before the glue-up.</p><div class="steps" id="steps"></div>';
+      '<h3>Assembly</h3><p class="fine">New parts in each step are shown in wood; parts already in place are ghosted. Clamp each part on its layout lines before you drive its screws.</p><div class="steps" id="steps"></div>';
     fillSteps();
     scheduleSteps();
   }
@@ -897,12 +948,13 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   }
 
   // fixed spec values, derived from the dimensions above
-  const pockets = [0, 1, 2].map(pocketDepth);
-  $('overallV').textContent = OW + ' × ' + DEPTH + ' × ' + OH + ' in';
+  const pockets = [0, 1, 2].map(pocketDepth);   // all equal to POCKET; kept as a check on the geometry
+  $('overallV').textContent = OW + ' × ' + frac(DEPTH) + ' × ' + OH + ' in';
   $('stockV').textContent = inch(T) + ' solid';
   $('tiersV').textContent = (NB - 1) + ' + back';
   $('cubbyV').textContent = inch(openW).replace(' in', '') + ' × ' + inch(innerH);
-  $('pocketV').textContent = '≈ ' + inch(Math.min(...pockets)).replace(' in', '') + '–' + inch(Math.max(...pockets));
+  $('pocketV').textContent = Math.max(...pockets) - Math.min(...pockets) < 0.01 ? frac(POCKET) + ' in, all three'
+    : '≈ ' + inch(Math.min(...pockets)).replace(' in', '') + '–' + inch(Math.max(...pockets));
 
   applyFinish();
   build();
