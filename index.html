@@ -53,28 +53,40 @@ dialog{width:min(980px, calc(100vw - 32px)); max-height:calc(100vh - 48px); padd
 dialog::backdrop{background:rgba(20,16,12,.45)}
 .cut-head{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap}
 .cut-head h2{margin:6px 0 4px; font-size:22px; font-weight:650}
-#cutBody h3{margin:24px 0 8px; font-size:16px; font-weight:650}
+.cutdoc h3{margin:24px 0 8px; font-size:16px; font-weight:650}
 .fine{font-size:13px; line-height:1.5; color:var(--muted); max-width:72ch}
 .tw{overflow-x:auto}
-#cutBody table{border-collapse:collapse; width:100%; font-size:13px}
-#cutBody th{text-align:left; font:500 11px/1.2 var(--f-mono); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding:6px 10px 6px 0; border-bottom:1px solid var(--line); white-space:nowrap}
-#cutBody td{padding:7px 10px 7px 0; border-bottom:1px solid var(--line); vertical-align:top}
-#cutBody td:not(:last-child){font-family:var(--f-mono); font-variant-numeric:tabular-nums; white-space:nowrap}
-#cutBody td:nth-child(2){font-family:var(--f-display)}
+.cutdoc table{border-collapse:collapse; width:100%; font-size:13px}
+.cutdoc th{text-align:left; font:500 11px/1.2 var(--f-mono); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding:6px 10px 6px 0; border-bottom:1px solid var(--line); white-space:nowrap}
+.cutdoc td{padding:7px 10px 7px 0; border-bottom:1px solid var(--line); vertical-align:top}
+.cutdoc td:not(:last-child){font-family:var(--f-mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+.cutdoc td:nth-child(2){font-family:var(--f-display)}
 figure.sheet{margin:8px 0 4px}
 figure.sheet svg{width:100%; height:auto; display:block}
 .ps{fill:var(--stage); stroke:var(--muted); stroke-width:.15}
 .pc{fill:var(--accent); fill-opacity:.14; stroke:var(--accent); stroke-width:.15}
-.pc.rot{stroke-dasharray:.8 .5}
 .pl{font:650 2.6px var(--f-display); fill:var(--fg); text-anchor:middle}
 .pd{font:500 1.35px var(--f-mono); fill:var(--fg); text-anchor:middle}
 .pa{font:500 1.6px var(--f-mono); fill:var(--muted)}
 details.fine{margin-top:12px; max-width:none}
 details.fine summary{cursor:pointer; color:var(--fg)}
+#printArea{display:none}
 @media print{
-  .app, .cut-head .views{display:none}
-  dialog{position:static; width:auto; max-height:none; border:0; padding:0; background:#fff; color:#000}
-  dialog::backdrop{display:none}
+  @page{size:letter; margin:0.5in}
+  /* always print light, whatever the screen theme */
+  :root:root:root{--bg:#fff; --stage:#F2EFEA; --panel:#fff; --fg:#000; --muted:#555; --line:#BBB; --accent:#7A3F1E; color-scheme:light}
+  body{background:#fff; height:auto}
+  .app, dialog{display:none !important}
+  #printArea{display:block}
+  #printArea h1{font-size:18pt; margin:0 0 4pt}
+  .cutdoc table{font-size:9pt}
+  .cutdoc td{padding:3pt 8pt 3pt 0}
+  .tw{overflow:visible}
+  .cutdoc h3{break-after:avoid; margin-top:14pt}
+  .cutdoc tr, figure.sheet{break-inside:avoid}
+  figure.sheet{margin:6pt 0}
+  .fine{max-width:none; font-size:9pt}
+  details.fine summary{list-style:none; font-weight:650}
 }
 @media (max-width:760px){
   .app{grid-template-columns:minmax(0,1fr); grid-template-rows:62vh auto; height:auto}
@@ -160,8 +172,9 @@ details.fine summary{cursor:pointer; color:var(--fg)}
       <button class="btn primary" id="cutClose">Close</button>
     </div>
   </div>
-  <div id="cutBody"></div>
+  <div id="cutBody" class="cutdoc"></div>
 </dialog>
+<div id="printArea" class="cutdoc"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -525,7 +538,6 @@ details.fine summary{cursor:pointer; color:var(--fg)}
     rows.map(r => '<tr>' + r.map(v => '<td>' + esc(v) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
   // ---- sheet layout: guillotine packing onto 48 × 96 plywood, face grain along the 96 ----
   const SHEET_W = 48, SHEET_L = 96, KERF = 0.125;
-  const SHOWY = 'AFGHJ';         // faces you see; turning their grain across costs more than hidden parts
   let packCache = {key:'', result:null};
   function packSheets(parts){
     const items = [];
@@ -544,23 +556,19 @@ details.fine summary{cursor:pointer; color:var(--fg)}
     let best = null;
     orders.forEach(order => [0, 1].forEach(splitRule => {
       const sheets = [], add = () => { sheets.push({free:[{x:0, y:0, w:SHEET_W + KERF, h:SHEET_L + KERF}], placed:[]}); };
-      let cost = 0;
       add();
       for (const it of order){
+        // parts are never turned: each part's length (its grain) runs along the sheet's face grain
+        const pw = it.w + KERF, ph = it.l + KERF;   // each part carries one kerf; the sheet gets one extra
         let pick = null;
-        for (const rot of [false, true]){
-          const pw = (rot ? it.l : it.w) + KERF, ph = (rot ? it.w : it.l) + KERF;   // each part carries one kerf; the sheet gets one extra
-          sheets.forEach((sh, si) => sh.free.forEach((f, fi) => {
-            if (pw > f.w + 1e-9 || ph > f.h + 1e-9) return;
-            const waste = f.w * f.h - pw * ph;
-            if (!pick || waste < pick.waste) pick = {si, fi, rot, pw, ph, waste};
-          }));
-          if (pick) break;
-        }
-        if (!pick){ add(); const rot = it.w > SHEET_W; pick = {si:sheets.length - 1, fi:0, rot, pw:(rot ? it.l : it.w) + KERF, ph:(rot ? it.w : it.l) + KERF}; }
+        sheets.forEach((sh, si) => sh.free.forEach((f, fi) => {
+          if (pw > f.w + 1e-9 || ph > f.h + 1e-9) return;
+          const waste = f.w * f.h - pw * ph;
+          if (!pick || waste < pick.waste) pick = {si, fi, pw, ph, waste};
+        }));
+        if (!pick){ add(); pick = {si:sheets.length - 1, fi:0, pw, ph}; }
         const sh = sheets[pick.si], f = sh.free.splice(pick.fi, 1)[0];
-        sh.placed.push({id:it.id, w:it.w, l:it.l, x:f.x, y:f.y, rot:pick.rot});
-        if (pick.rot) cost += SHOWY.includes(it.id) ? 10 : 1;
+        sh.placed.push({id:it.id, w:it.w, l:it.l, x:f.x, y:f.y});
         const rw = f.w - pick.pw, rh = f.h - pick.ph;
         if (splitRule ? rw < rh : rw >= rh){   // guillotine: every cut runs edge to edge of its offcut
           if (rh > 0) sh.free.push({x:f.x, y:f.y + pick.ph, w:f.w, h:rh});
@@ -570,7 +578,12 @@ details.fine summary{cursor:pointer; color:var(--fg)}
           if (rh > 0) sh.free.push({x:f.x, y:f.y + pick.ph, w:pick.pw, h:rh});
         }
       }
-      cost += sheets.length * 1000;
+      // fewest sheets, then matching pieces (both sides, both dividers) cut from one sheet so grain and colour match,
+      // then the shortest run along the last sheet, so its offcut is as big as possible
+      const last = sheets[sheets.length - 1].placed, used = Math.max(...last.map(p => p.y + p.l));
+      const split = new Set(), seen = {};
+      sheets.forEach((sh, si) => sh.placed.forEach(p => { if (p.id in seen && seen[p.id] !== si) split.add(p.id); seen[p.id] = si; }));
+      const cost = sheets.length * 1e6 + split.size * 1e4 + used;
       if (!best || cost < best.cost) best = {cost, sheets:sheets.map(sh => sh.placed)};
     }));
     packCache = {key, result:best.sheets};
@@ -579,12 +592,12 @@ details.fine summary{cursor:pointer; color:var(--fg)}
   function sheetSVG(placed, n, total){
     // drawn landscape: the sheet's 96 in length (and face grain) runs left to right
     const r = placed.map(p => {
-      const X = p.y, Y = p.x, W = p.rot ? p.w : p.l, H = p.rot ? p.l : p.w, cx = X + W/2, cy = Y + H/2;
+      const X = p.y, Y = p.x, W = p.l, H = p.w, cx = X + W/2, cy = Y + H/2;
       const dims = frac(p.w) + ' × ' + frac(p.l);
       const label = H >= 5
         ? '<text x="' + cx + '" y="' + (cy - 0.4) + '" class="pl">' + p.id + '</text><text x="' + cx + '" y="' + (cy + 1.9) + '" class="pd">' + dims + '</text>'
         : '<text x="' + cx + '" y="' + (cy + 0.5) + '" class="pd">' + p.id + '  ' + dims + '</text>';
-      return '<rect x="' + X + '" y="' + Y + '" width="' + W + '" height="' + H + '" class="pc' + (p.rot ? ' rot' : '') + '"><title>' + p.id + ' ' + dims + (p.rot ? ', grain across' : '') + '</title></rect>' + label;
+      return '<rect x="' + X + '" y="' + Y + '" width="' + W + '" height="' + H + '" class="pc"><title>' + p.id + ' ' + dims + '</title></rect>' + label;
     }).join('');
     return '<figure class="sheet"><svg viewBox="-1 -5 98 55" role="img" aria-label="Sheet ' + n + ' of ' + total + ': cutting layout on a 4 by 8 foot sheet">' +
       '<text x="0" y="-1.6" class="pa">Sheet ' + n + (total > 1 ? ' of ' + total : '') + ' · 48 × 96 in · face grain →</text>' +
@@ -598,7 +611,10 @@ details.fine summary{cursor:pointer; color:var(--fg)}
     const veneer = state.finish.type === 'wood' ? WOODS[state.finish.i].name.toLowerCase() + ' veneer plywood' : 'paint-grade plywood (birch or maple)';
     const bf = parts.reduce((a, p) => a + (p.bf || 0), 0);
     const e = parts.find(p => p.ply);
-    const where = id => { const at = []; sheets.forEach((pl, i) => pl.forEach(p => { if (p.id === id) at.push((sheets.length > 1 ? 'Sheet ' + (i + 1) : 'Sheet') + (p.rot ? ', turned 90°' : '')); })); return [...new Set(at)].join('; ') || '¼ in ply'; };
+    const last = sheets[sheets.length - 1], lastL = Math.max(...last.map(p => p.y + p.l)), lastW = Math.max(...last.map(p => p.x + p.w));
+    const smaller = lastW <= 24 && lastL <= 48 ? 'a 2 × 4 ft panel' : lastL <= 48 ? 'a 4 × 4 ft half sheet' : '';
+    const halfNote = sheets.length > 1 && smaller ? 'Sheet ' + sheets.length + ' only needs ' + frac(lastW) + ' × ' + frac(lastL) + ' in, so ' + smaller + ' is enough for it. ' : '';
+    const where = id => { const at = []; sheets.forEach((pl, i) => pl.forEach(p => { if (p.id === id) at.push('Sheet ' + (i + 1)); })); return [...new Set(at)].join('; ') || '¼ in ply'; };
     $('cutMeta').textContent = state.count + ' scallops · ' + frac(scallopDepth()) + ' in deep · back panel ' + (state.back ? 'scalloped' : 'straight') +
       ' · ' + $('finishName').textContent + ' · baseboard ' + frac(state.bbH) + ' × ' + frac(state.bbD) + ' in';
     $('cutBody').innerHTML =
@@ -607,12 +623,12 @@ details.fine summary{cursor:pointer; color:var(--fg)}
       '<p class="fine">Finished sizes in inches, rounded to 1/16. L runs with the grain. B, C and F–L are ' + frac(IW + 2*DADO) +
       ' long: ' + frac(IW) + ' between the sides plus a ' + frac(DADO) + ' tongue at each end. Tier widths are measured along the face, from the long point of the bevel to the scallop tips.</p>' +
       '<h3>Cut list</h3>' +
-      table(['Part', 'Qty', 'Width', 'Length', 'Angles', 'From'], parts.map(p => [p.id + ' ' + p.name, p.qty, frac(p.w), frac(p.l), p.ang, where(p.id)])) +
+      table(['Part', 'Qty', 'Width', 'Length', 'From', 'Angles'], parts.map(p => [p.id + ' ' + p.name, p.qty, frac(p.w), frac(p.l), where(p.id), p.ang])) +
       '<p class="fine">Cut every part to its width and length square first, then cut the angles. Angles are measured from square, so a 5° bevel is the blade tilted 5°. Side profiles, scallops and dadoes come from the tables further down.</p>' +
       '<h3>Sheet layout</h3>' +
       sheets.map((pl, i) => sheetSVG(pl, i + 1, sheets.length)).join('') +
       '<p class="fine">' + sheets.length + ' sheet' + (sheets.length > 1 ? 's' : '') + ' of ' + frac(T) + ' in ' + esc(veneer) + ', with a ' + frac(KERF) +
-      ' in kerf between parts. Every cut runs edge to edge, so it works on a table saw or with a track saw. Dashed parts are turned 90°, so their face grain runs across them. Cut E (' + frac(e.w) + ' × ' + frac(e.l) +
+      ' in kerf between parts. Every cut runs edge to edge, so it works on a table saw or with a track saw. No part is turned to make it fit: every part\'s length runs with the sheet\'s face grain, so the grain matches the solid-wood design. ' + halfNote + 'Cut E (' + frac(e.w) + ' × ' + frac(e.l) +
       ') from ' + frac(PLY) + ' in plywood. Plywood edges show their layers: edge-band the straight front edges, and fill and paint the scallops, or make F–J from solid wood for a clear finish.</p>' +
       '<details class="fine"><summary>Building from solid lumber instead</summary>' +
       table(['Part', 'Qty', 'Rough W × L', 'Boards per panel', 'Board feet'], parts.filter(p => !p.ply).map(p => [p.id + ' ' + p.name, p.qty, frac(p.rw) + ' × ' + frac(p.rl), p.boards, p.bf.toFixed(1)])) +
@@ -695,7 +711,12 @@ details.fine summary{cursor:pointer; color:var(--fg)}
   $('wall').addEventListener('change', e => { state.wall = e.target.checked; build(); });
   $('cutOpen').addEventListener('click', () => $('cut').showModal());
   $('cutClose').addEventListener('click', () => $('cut').close());
-  $('cutPrint').addEventListener('click', () => print());
+  $('cutPrint').addEventListener('click', () => {
+    // print a plain copy outside the modal: dialogs sit in the top layer and clip to the viewport
+    $('printArea').innerHTML = '<h1>Parts &amp; cut list</h1><p class="fine">' + esc($('cutMeta').textContent) + '</p>' + $('cutBody').innerHTML;
+    $('printArea').querySelectorAll('details').forEach(d => d.open = true);
+    print();
+  });
   $('cutCsv').addEventListener('click', () => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([cutCSV()], {type:'text/csv'}));
