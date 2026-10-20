@@ -19,12 +19,12 @@ Controls in the model:
 
 | Part | Size |
 | --- | --- |
-| Overall | 36 W × 16 D × 32 H in |
+| Overall | 48 W × 16 D × 44 H in |
 | Stock | ¾ in solid |
 | Display | 3 scalloped tiers + back panel |
-| Cubbies | 3 openings, about 11 × 8⅞ in |
+| Cubbies | 3 openings, about 15 × 8⅞ in |
 | Tier lean | 5° back from vertical |
-| Side front slope | 35° back from vertical |
+| Side front slope | 25° back from vertical |
 | Baseboard cutaway | 4⅝ H × ⅞ D in (default 4½ × ¾ trim + ⅛ clearance) |
 
 Overall size was estimated from a photo of the original walnut piece. Measure the real piece and your baseboard (including any cap moulding) before cutting. The cutaway already includes ⅛ in clearance.
