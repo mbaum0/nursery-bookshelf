@@ -13,6 +13,7 @@ Controls in the model:
 - Wood finishes (walnut, cherry, white oak, maple) or paint, including a custom colour picker
 - Baseboard trim height and thickness for the rear cutaway
 - Camera presets (¾, front, side) and a turntable
+- **Parts & cut list**: finished and rough sizes, board feet, side dado layout and side profile, generated from the current settings (print or download as CSV)
 
 ## Current dimensions (estimated)
 
@@ -22,7 +23,8 @@ Controls in the model:
 | Stock | ¾ in solid |
 | Display | 3 scalloped tiers + back panel |
 | Cubbies | 3 openings, about 11 × 8⅞ in |
-| Baseboard cutaway | 4½ H × ¾ D in (default) |
+| Tier lean | 5° back from vertical |
+| Baseboard cutaway | 4⅝ H × ⅞ D in (default 4½ × ¾ trim + ⅛ clearance) |
 
-Overall size was estimated from a photo of the original walnut piece. Measure the real piece and your baseboard (including any cap moulding) before cutting, and add about ⅛ in clearance to the cutaway.
+Overall size was estimated from a photo of the original walnut piece. Measure the real piece and your baseboard (including any cap moulding) before cutting. The cutaway already includes ⅛ in clearance.
 # nursery-bookshelf
