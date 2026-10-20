@@ -182,8 +182,8 @@ details.fine summary{cursor:pointer; color:var(--fg)}
 (function(){
   // ---- dimensions (inches) ----
   const T = 0.75;              // stock thickness
-  const OW = 36;               // overall width
-  const OH = 32;               // overall height
+  const OW = 48;               // overall width
+  const OH = 44;               // overall height
   const IW = OW - 2*T;         // between sides
   const HB = 12;               // height of the cubby base (top surface)
   const FOOT = 1.6;            // underside of the cubby floor
@@ -192,16 +192,19 @@ details.fine summary{cursor:pointer; color:var(--fg)}
   const CLEAR = 0.125;         // clearance added to the baseboard cutaway
   const PLY = 0.25;            // cubby back panel thickness
   const DEPTH = 16;            // overall depth; back edge sits on the wall
-  const SLOPE_DEG = 35;        // side panels' front edge above the base, back from vertical
+  const SLOPE_DEG = 25;        // side panels' front edge above the base, back from vertical (steepest 5° step that fits the depth)
   const S = Math.tan(SLOPE_DEG * Math.PI / 180);
   const TOPZ = S * (OH - HB);  // depth of the side panels' sloped front at the top
-  const BACK_INSET = 0.5;      // back panel top sits this far behind the sides' front edge
   const LEAN_DEG = 5;          // lean of each tier board back from vertical (a whole 5° for easy saw setups)
   const LEAN = LEAN_DEG * Math.PI / 180;
   const K = Math.tan(LEAN);
+  // back panel top sits up to ½ in behind the sides' front edge, as long as its back face stays ⅛ in off the wall
+  const BACK_INSET = Math.min(0.5, DEPTH - 0.125 - T / Math.cos(LEAN) - TOPZ);
   const NB = 4;                              // 3 tiers + back panel
-  const tops = [18, 24, 29, 31.75];
-  const bottoms = [HB, HB, 18.5, 23.5];      // pocket floors: cubby top, then shelves
+  // tier heights as fractions of the height above the cubby base, so the tiers re-space when OH changes
+  const above = f => HB + f * (OH - HB);
+  const tops = [0.3, 0.6, 0.85, 0.9875].map(above);
+  const bottoms = [HB, HB, above(0.325), above(0.575)];   // pocket floors: cubby top, then shelves
   const zTop = i => i === NB - 1 ? TOPZ + BACK_INSET : S * (tops[i] - HB);   // depth of tier top (positive = back)
   const zAt = (i, y) => zTop(i) - K * (tops[i] - y);            // face plane depth at height y
 
@@ -253,7 +256,7 @@ details.fine summary{cursor:pointer; color:var(--fg)}
   controls.dampingFactor = 0.08;
   controls.minDistance = 30; controls.maxDistance = 220;
   controls.maxPolarAngle = Math.PI/2 - 0.03;
-  controls.target.set(0, 14, -7);
+  controls.target.set(0, OH * 0.45, -7);
 
   scene.add(new THREE.HemisphereLight(0xfff6ea, 0x8a7a68, 0.55));
   const key = new THREE.DirectionalLight(0xfff1df, 1.25);
@@ -649,9 +652,10 @@ details.fine summary{cursor:pointer; color:var(--fg)}
 
   // ---- camera presets ----
   const VIEWS = {
-    three: {pos:[46, 30, 58], target:[0, 14, -7]},
-    front: {pos:[0, 17, 78],  target:[0, 15, -7]},
-    side:  {pos:[105, 17, -7], target:[0, 15, -7]}
+    // framed for the overall size: distance grows with the larger of width and height
+    three: {pos:[1.3*Math.max(OW, OH), 0.95*OH, 1.6*Math.max(OW, OH)], target:[0, OH * 0.45, -7]},
+    front: {pos:[0, OH * 0.55, 2.2*Math.max(OW, OH)],                   target:[0, OH * 0.47, -7]},
+    side:  {pos:[2.9*Math.max(OW, OH), OH * 0.55, -7],                  target:[0, OH * 0.47, -7]}
   };
   let tween = null;
   function goView(name, instant){
