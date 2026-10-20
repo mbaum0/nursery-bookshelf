@@ -61,6 +61,16 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
 #cutBody td{padding:7px 10px 7px 0; border-bottom:1px solid var(--line); vertical-align:top}
 #cutBody td:not(:last-child){font-family:var(--f-mono); font-variant-numeric:tabular-nums; white-space:nowrap}
 #cutBody td:nth-child(2){font-family:var(--f-display)}
+figure.sheet{margin:8px 0 4px}
+figure.sheet svg{width:100%; height:auto; display:block}
+.ps{fill:var(--stage); stroke:var(--muted); stroke-width:.15}
+.pc{fill:var(--accent); fill-opacity:.14; stroke:var(--accent); stroke-width:.15}
+.pc.rot{stroke-dasharray:.8 .5}
+.pl{font:650 2.6px var(--f-display); fill:var(--fg); text-anchor:middle}
+.pd{font:500 1.35px var(--f-mono); fill:var(--fg); text-anchor:middle}
+.pa{font:500 1.6px var(--f-mono); fill:var(--muted)}
+details.fine{margin-top:12px; max-width:none}
+details.fine summary{cursor:pointer; color:var(--fg)}
 @media print{
   .app, .cut-head .views{display:none}
   dialog{position:static; width:auto; max-height:none; border:0; padding:0; background:#fff; color:#000}
@@ -169,8 +179,9 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
   const CLEAR = 0.125;         // clearance added to the baseboard cutaway
   const PLY = 0.25;            // cubby back panel thickness
   const DEPTH = 16;            // overall depth; back edge sits on the wall
-  const TOPZ = 13.4;           // depth of the side panels' sloped front at the top
-  const S = TOPZ / (OH - HB);  // front slope of side panels above the base
+  const SLOPE_DEG = 35;        // side panels' front edge above the base, back from vertical
+  const S = Math.tan(SLOPE_DEG * Math.PI / 180);
+  const TOPZ = S * (OH - HB);  // depth of the side panels' sloped front at the top
   const BACK_INSET = 0.5;      // back panel top sits this far behind the sides' front edge
   const LEAN_DEG = 5;          // lean of each tier board back from vertical (a whole 5° for easy saw setups)
   const LEAN = LEAN_DEG * Math.PI / 180;
@@ -335,10 +346,9 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
     s.lineTo(notchZ, notchH());
     s.lineTo(DEPTH, notchH());
     s.lineTo(DEPTH, OH);                               // vertical back edge, flush to the wall
-    const zf = TOPZ;
-    s.lineTo(zf + 0.6, OH);
-    s.quadraticCurveTo(zf, OH, zf - 0.25, OH - 0.6);
-    s.lineTo(0.35, HB + 0.5);                       // sloped front above the base
+    s.lineTo(TOPZ + 0.6, OH);
+    s.quadraticCurveTo(TOPZ, OH, TOPZ - 0.6*S, OH - 0.6);
+    s.lineTo(0.5*S, HB + 0.5);                      // sloped front above the base
     s.quadraticCurveTo(0, HB, 0, HB - 0.6);         // eased corner into the vertical base front
     s.closePath();
     return s;
@@ -468,15 +478,15 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
     const names = ['Tier 1 (front)', 'Tier 2', 'Tier 3', 'Back panel'];
     const scalloped = i => i < NB - 1 || state.back;
     const parts = [
-      {id:'A', name:'Side', qty:2, t:T, w:DEPTH, l:OH, note:'Grain vertical. Mirror pair: dadoes on the inside faces'},
-      {id:'B', name:'Cubby floor', qty:1, t:T, w:CD, l:L, note:'Divider dadoes in the top face'},
-      {id:'C', name:'Cubby top', qty:1, t:T, w:CD, l:L, note:'Divider dadoes in the bottom face. Round the front corners to the side curve'},
-      {id:'D', name:'Divider', qty:2, t:T, w:CD, l:innerH + 2*DADO, note:'Grain vertical'},
-      {id:'E', name:'Cubby back', qty:1, t:PLY, w:HB - FOOT, l:IW, ply:true, note:'Plywood. Glue and brad to B, C and D'}
+      {id:'A', name:'Side', qty:2, t:T, w:DEPTH, l:OH, ang:'Front edge ' + SLOPE_DEG + '° from vertical. Tier dadoes ' + deg + '° from vertical', note:'Grain vertical. Mirror pair: dadoes on the inside faces'},
+      {id:'B', name:'Cubby floor', qty:1, t:T, w:CD, l:L, ang:'Square', note:'Divider dadoes in the top face'},
+      {id:'C', name:'Cubby top', qty:1, t:T, w:CD, l:L, ang:'Square', note:'Divider dadoes in the bottom face. Round the front corners to the side curve'},
+      {id:'D', name:'Divider', qty:2, t:T, w:CD, l:innerH + 2*DADO, ang:'Square', note:'Grain vertical'},
+      {id:'E', name:'Cubby back', qty:1, t:PLY, w:HB - FOOT, l:IW, ply:true, ang:'Square', note:'Plywood. Glue and brad to B, C and D'}
     ];
-    tops.forEach((top, i) => parts.push({id:'FGHJ'[i], name:names[i], qty:1, t:T, w:(top - bottoms[i]) / c, l:L,
+    tops.forEach((top, i) => parts.push({id:'FGHJ'[i], name:names[i], qty:1, t:T, w:(top - bottoms[i]) / c, l:L, ang:'Bottom edge ' + deg + '° bevel',
       note:(scalloped(i) ? state.count + ' scallops, each ' + frac(span) + ' wide × ' + frac(d) + ' tall' : 'Straight top') + '. Bottom edge beveled ' + deg + '°'}));
-    [1, 2].forEach((i, k) => parts.push({id:'KL'[k], name:'Shelf ' + (k + 1), qty:1, t:T, w:shelf(i).depth, l:L,
+    [1, 2].forEach((i, k) => parts.push({id:'KL'[k], name:'Shelf ' + (k + 1), qty:1, t:T, w:shelf(i).depth, l:L, ang:'Front edge ' + deg + '° bevel',
       note:'Floor under ' + names[i + 1] + '. Front edge beveled ' + deg + '°'}));
     parts.forEach(p => {   // rough stock: +1 in long, +½ in wide, glued up from boards no wider than 7¼ in
       if (p.ply) return;
@@ -504,7 +514,7 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
       ['Baseboard cutaway', range(nz, DEPTH), frac(notchH()) + ' tall (trim ' + frac(state.bbH) + ' × ' + frac(state.bbD) + ' + ' + frac(CLEAR) + ' clearance)'],
       ['Back edge', frac(DEPTH), range(notchH(), OH) + ' high, square to the floor'],
       ['Top', range(TOPZ + 0.6, DEPTH), frac(OH) + ' high, flat'],
-      ['Front slope', range(0.35, TOPZ - 0.25), 'Straight from ' + frac(HB + 0.5) + ' up to ' + frac(OH - 0.6) + ' high, eased at both ends'],
+      ['Front slope', range(0.5*S, TOPZ - 0.6*S), 'Straight at ' + SLOPE_DEG + '° from vertical, from ' + frac(HB + 0.5) + ' up to ' + frac(OH - 0.6) + ' high, eased at both ends'],
       ['Front of base', '0', range(0, HB - 0.6) + ' high, vertical']
     ];
     return {parts, dadoes, dividers, profile};
@@ -513,11 +523,82 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
   const esc = s => String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'})[ch]);
   const table = (head, rows) => '<div class="tw"><table><thead><tr>' + head.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' +
     rows.map(r => '<tr>' + r.map(v => '<td>' + esc(v) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
+  // ---- sheet layout: guillotine packing onto 48 × 96 plywood, face grain along the 96 ----
+  const SHEET_W = 48, SHEET_L = 96, KERF = 0.125;
+  const SHOWY = 'AFGHJ';         // faces you see; turning their grain across costs more than hidden parts
+  let packCache = {key:'', result:null};
+  function packSheets(parts){
+    const items = [];
+    parts.filter(p => !p.ply).forEach(p => { for (let q = 0; q < p.qty; q++) items.push({id:p.id, w:p.w, l:p.l}); });
+    const key = JSON.stringify(items);
+    if (packCache.key === key) return packCache.result;
+    let seed = 11;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const orders = [(a, b) => b.w * b.l - a.w * a.l, (a, b) => Math.max(b.w, b.l) - Math.max(a.w, a.l), (a, b) => b.l - a.l, (a, b) => b.w - a.w]
+      .map(o => items.slice().sort(o));
+    for (let i = 0; i < 400; i++){   // plus seeded shuffles; small enough to brute-force on every change
+      const o = items.slice();
+      for (let j = o.length - 1; j > 0; j--){ const k = Math.floor(rnd() * (j + 1)); [o[j], o[k]] = [o[k], o[j]]; }
+      orders.push(o);
+    }
+    let best = null;
+    orders.forEach(order => [0, 1].forEach(splitRule => {
+      const sheets = [], add = () => { sheets.push({free:[{x:0, y:0, w:SHEET_W + KERF, h:SHEET_L + KERF}], placed:[]}); };
+      let cost = 0;
+      add();
+      for (const it of order){
+        let pick = null;
+        for (const rot of [false, true]){
+          const pw = (rot ? it.l : it.w) + KERF, ph = (rot ? it.w : it.l) + KERF;   // each part carries one kerf; the sheet gets one extra
+          sheets.forEach((sh, si) => sh.free.forEach((f, fi) => {
+            if (pw > f.w + 1e-9 || ph > f.h + 1e-9) return;
+            const waste = f.w * f.h - pw * ph;
+            if (!pick || waste < pick.waste) pick = {si, fi, rot, pw, ph, waste};
+          }));
+          if (pick) break;
+        }
+        if (!pick){ add(); const rot = it.w > SHEET_W; pick = {si:sheets.length - 1, fi:0, rot, pw:(rot ? it.l : it.w) + KERF, ph:(rot ? it.w : it.l) + KERF}; }
+        const sh = sheets[pick.si], f = sh.free.splice(pick.fi, 1)[0];
+        sh.placed.push({id:it.id, w:it.w, l:it.l, x:f.x, y:f.y, rot:pick.rot});
+        if (pick.rot) cost += SHOWY.includes(it.id) ? 10 : 1;
+        const rw = f.w - pick.pw, rh = f.h - pick.ph;
+        if (splitRule ? rw < rh : rw >= rh){   // guillotine: every cut runs edge to edge of its offcut
+          if (rh > 0) sh.free.push({x:f.x, y:f.y + pick.ph, w:f.w, h:rh});
+          if (rw > 0) sh.free.push({x:f.x + pick.pw, y:f.y, w:rw, h:pick.ph});
+        } else {
+          if (rw > 0) sh.free.push({x:f.x + pick.pw, y:f.y, w:rw, h:f.h});
+          if (rh > 0) sh.free.push({x:f.x, y:f.y + pick.ph, w:pick.pw, h:rh});
+        }
+      }
+      cost += sheets.length * 1000;
+      if (!best || cost < best.cost) best = {cost, sheets:sheets.map(sh => sh.placed)};
+    }));
+    packCache = {key, result:best.sheets};
+    return best.sheets;
+  }
+  function sheetSVG(placed, n, total){
+    // drawn landscape: the sheet's 96 in length (and face grain) runs left to right
+    const r = placed.map(p => {
+      const X = p.y, Y = p.x, W = p.rot ? p.w : p.l, H = p.rot ? p.l : p.w, cx = X + W/2, cy = Y + H/2;
+      const dims = frac(p.w) + ' × ' + frac(p.l);
+      const label = H >= 5
+        ? '<text x="' + cx + '" y="' + (cy - 0.4) + '" class="pl">' + p.id + '</text><text x="' + cx + '" y="' + (cy + 1.9) + '" class="pd">' + dims + '</text>'
+        : '<text x="' + cx + '" y="' + (cy + 0.5) + '" class="pd">' + p.id + '  ' + dims + '</text>';
+      return '<rect x="' + X + '" y="' + Y + '" width="' + W + '" height="' + H + '" class="pc' + (p.rot ? ' rot' : '') + '"><title>' + p.id + ' ' + dims + (p.rot ? ', grain across' : '') + '</title></rect>' + label;
+    }).join('');
+    return '<figure class="sheet"><svg viewBox="-1 -5 98 55" role="img" aria-label="Sheet ' + n + ' of ' + total + ': cutting layout on a 4 by 8 foot sheet">' +
+      '<text x="0" y="-1.6" class="pa">Sheet ' + n + (total > 1 ? ' of ' + total : '') + ' · 48 × 96 in · face grain →</text>' +
+      '<rect x="0" y="0" width="' + SHEET_L + '" height="' + SHEET_W + '" class="ps"/>' + r + '</svg></figure>';
+  }
+
   function renderCutList(){
     const {parts, dadoes, dividers, profile} = cutList();
+    const sheets = packSheets(parts);
     const wood = state.finish.type === 'wood' ? WOODS[state.finish.i].name : 'paint-grade poplar or maple';
+    const veneer = state.finish.type === 'wood' ? WOODS[state.finish.i].name.toLowerCase() + ' veneer plywood' : 'paint-grade plywood (birch or maple)';
     const bf = parts.reduce((a, p) => a + (p.bf || 0), 0);
     const e = parts.find(p => p.ply);
+    const where = id => { const at = []; sheets.forEach((pl, i) => pl.forEach(p => { if (p.id === id) at.push((sheets.length > 1 ? 'Sheet ' + (i + 1) : 'Sheet') + (p.rot ? ', turned 90°' : '')); })); return [...new Set(at)].join('; ') || '¼ in ply'; };
     $('cutMeta').textContent = state.count + ' scallops · ' + frac(scallopDepth()) + ' in deep · back panel ' + (state.back ? 'scalloped' : 'straight') +
       ' · ' + $('finishName').textContent + ' · baseboard ' + frac(state.bbH) + ' × ' + frac(state.bbD) + ' in';
     $('cutBody').innerHTML =
@@ -526,9 +607,16 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
       '<p class="fine">Finished sizes in inches, rounded to 1/16. L runs with the grain. B, C and F–L are ' + frac(IW + 2*DADO) +
       ' long: ' + frac(IW) + ' between the sides plus a ' + frac(DADO) + ' tongue at each end. Tier widths are measured along the face, from the long point of the bevel to the scallop tips.</p>' +
       '<h3>Cut list</h3>' +
+      table(['Part', 'Qty', 'Width', 'Length', 'Angles', 'From'], parts.map(p => [p.id + ' ' + p.name, p.qty, frac(p.w), frac(p.l), p.ang, where(p.id)])) +
+      '<p class="fine">Cut every part to its width and length square first, then cut the angles. Angles are measured from square, so a 5° bevel is the blade tilted 5°. Side profiles, scallops and dadoes come from the tables further down.</p>' +
+      '<h3>Sheet layout</h3>' +
+      sheets.map((pl, i) => sheetSVG(pl, i + 1, sheets.length)).join('') +
+      '<p class="fine">' + sheets.length + ' sheet' + (sheets.length > 1 ? 's' : '') + ' of ' + frac(T) + ' in ' + esc(veneer) + ', with a ' + frac(KERF) +
+      ' in kerf between parts. Every cut runs edge to edge, so it works on a table saw or with a track saw. Dashed parts are turned 90°, so their face grain runs across them. Cut E (' + frac(e.w) + ' × ' + frac(e.l) +
+      ') from ' + frac(PLY) + ' in plywood. Plywood edges show their layers: edge-band the straight front edges, and fill and paint the scallops, or make F–J from solid wood for a clear finish.</p>' +
+      '<details class="fine"><summary>Building from solid lumber instead</summary>' +
       table(['Part', 'Qty', 'Rough W × L', 'Boards per panel', 'Board feet'], parts.filter(p => !p.ply).map(p => [p.id + ' ' + p.name, p.qty, frac(p.rw) + ' × ' + frac(p.rl), p.boards, p.bf.toFixed(1)])) +
-      '<p class="fine">Stock: ' + esc(wood) + ', 4/4 rough, milled to ' + frac(T) + ' in. Parts need ' + bf.toFixed(1) + ' bd ft. Buy about ' +
-      Math.ceil(bf * 1.3) + ' bd ft to cover defects and offcuts. Plywood: one ' + frac(PLY) + ' in piece at least ' + frac(e.w + 0.5) + ' × ' + frac(e.l + 0.5) + ' in (cut E to ' + frac(e.w) + ' × ' + frac(e.l) + ').</p>' +
+      '<p>Stock: ' + esc(wood) + ', 4/4 rough, milled to ' + frac(T) + ' in. Parts need ' + bf.toFixed(1) + ' bd ft. Buy about ' + Math.ceil(bf * 1.3) + ' bd ft to cover defects and offcuts.</p></details>' +
       '<h3>Side dadoes</h3>' +
       table(['Part', 'For', 'Height (in)', 'From front (in)', 'Notes'], dadoes.map(x => [x.part, x.what, x.h, x.z, x.note])) +
       '<p class="fine">All dadoes are ' + frac(DADO) + ' deep and as wide as your stock. Lay them out on the inside faces before you cut the profile, measuring from the blank\'s bottom and front edges. Divider dadoes in B (top face) and C (bottom face), measured from the left end: ' + dividers.join(' and ') + '.</p>' +
@@ -538,8 +626,8 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
   function cutCSV(){
     const {parts} = cutList();
     const q = v => '"' + String(v).replace(/"/g, '""') + '"';
-    return [['Part', 'Name', 'Qty', 'T (in)', 'W (in)', 'L (in)', 'Rough W (in)', 'Rough L (in)', 'Board feet', 'Notes']]
-      .concat(parts.map(p => [p.id, p.name, p.qty, p.t.toFixed(3), p.w.toFixed(3), p.l.toFixed(3), p.rw ? p.rw.toFixed(3) : '', p.rl ? p.rl.toFixed(3) : '', p.bf ? p.bf.toFixed(2) : '', p.note]))
+    return [['Part', 'Name', 'Qty', 'T (in)', 'W (in)', 'L (in)', 'Angles', 'Notes']]
+      .concat(parts.map(p => [p.id, p.name, p.qty, p.t.toFixed(3), p.w.toFixed(3), p.l.toFixed(3), p.ang, p.note]))
       .map(r => r.map(q).join(',')).join('\n');
   }
 
