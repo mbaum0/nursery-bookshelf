@@ -691,10 +691,13 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
 
   // ---- assembly steps: the model rendered part by part ----
   const ghostMat = new THREE.MeshStandardMaterial({color:'#9AA3AD', transparent:true, opacity:0.2, depthWrite:false});
+  // framed on a 36 × 32 piece, then pulled back in proportion to the larger of width and height
+  const camK = Math.max(OW / 36, OH / 32);
+  const stepCam = (target, offset) => ({pos:target.map((t, i) => t + offset[i] * camK), target});
   const STEP_CAMS = {
-    inside: {pos:[30, 24, 30],   target:[-17, 15, -8]},
-    three:  {pos:[44, 34, 56],   target:[0, 14, -7]},
-    back:   {pos:[-36, 26, -62], target:[0, 9, -8]}
+    inside: stepCam([-(IW/2 - 1), 0.5 * OH, -DEPTH/2], [54, 10, 44]),
+    three:  stepCam([0, 0.45 * OH, -7], [44, 20, 63]),
+    back:   stepCam([0, 0.34 * OH, -DEPTH/2], [-42, 18, -64])
   };
   const STEPS = [
     {add:['A1', 'dado'], cam:'inside', text:'Cut the dadoes in both sides, using the drawings above. The left side is shown; the right side is its mirror image.'},
