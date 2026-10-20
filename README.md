@@ -13,15 +13,16 @@ Controls in the model:
 - Wood finishes (walnut, cherry, white oak, maple) or paint, including a custom colour picker
 - Baseboard trim height and thickness for the rear cutaway
 - Camera presets (¾, front, side) and a turntable
-- **Build plans**: finished sizes and angles for every part, a grain-aligned layout on 4 × 8 ft plywood sheets, solid-lumber rough sizes and board feet, side dado layout and side profile, to-scale dado drawings for the sides and cubby floor, and step-by-step assembly renders, all generated from the current settings (print or download as CSV)
+- **Build plans**: finished sizes and angles for every part, a grain-aligned layout on 4 × 8 ft plywood sheets with every saw cut numbered in order and each part's final shape, solid-lumber rough sizes and board feet, side dado layout and side profile, to-scale layout-line drawings for the sides and cubby floor, a pocket-hole schedule, and step-by-step assembly renders, all generated from the current settings (print or download as CSV)
 
 ## Current dimensions (estimated)
 
 | Part | Size |
 | --- | --- |
-| Overall | 48 W × 16 D × 44 H in |
+| Overall | 48 W × 18¾ D × 44 H in |
 | Stock | ¾ in solid |
-| Display | 3 scalloped tiers + back panel |
+| Display | 3 scalloped tiers + back panel, every pocket 3 in deep |
+| Joinery | Glue and 1¼ in pocket screws; no dadoes |
 | Cubbies | 3 openings, about 15 × 8⅞ in |
 | Tier lean | 5° back from vertical |
 | Side front slope | 25° back from vertical |
