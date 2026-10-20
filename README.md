@@ -13,7 +13,7 @@ Controls in the model:
 - Wood finishes (walnut, cherry, white oak, maple) or paint, including a custom colour picker
 - Baseboard trim height and thickness for the rear cutaway
 - Camera presets (¾, front, side) and a turntable
-- **Parts & cut list**: finished sizes and angles for every part, a grain-aligned layout on 4 × 8 ft plywood sheets, solid-lumber rough sizes and board feet, side dado layout and side profile, all generated from the current settings (print or download as CSV)
+- **Build plans**: finished sizes and angles for every part, a grain-aligned layout on 4 × 8 ft plywood sheets, solid-lumber rough sizes and board feet, side dado layout and side profile, to-scale dado drawings for the sides and cubby floor, and step-by-step assembly renders, all generated from the current settings (print or download as CSV)
 
 ## Current dimensions (estimated)
 
