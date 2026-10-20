@@ -1,3 +1,7 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Scalloped Book Display 3D</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,7 +17,7 @@
   --bg:#1B1917; --stage:#22201D; --panel:#2A2724; --fg:#EEE9E2; --muted:#A99F94; --line:#3C3732; --accent:#D69A6E; --accent-fg:#1B1917; color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#1B1917; --stage:#22201D; --panel:#2A2724; --fg:#EEE9E2; --muted:#A99F94; --line:#3C3732; --accent:#D69A6E; --accent-fg:#1B1917; color-scheme:dark}
 html,body{height:100%}
-body{background:var(--bg); color:var(--fg); font-family:var(--f-display)}
+body{margin:0; background:var(--bg); color:var(--fg); font-family:var(--f-display)}
 .app{height:100%; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:0}
 .stage{position:relative; background:var(--stage); min-height:0; min-width:0}
 #view{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none}
@@ -103,13 +107,13 @@ input[type=range]{width:100%; accent-color:var(--accent)}
       </div>
     </div>
     <div class="spec">
-      <div class="row"><span>Overall</span><span class="val">36 × 16 × 32 in</span></div>
+      <div class="row"><span>Overall</span><span class="val" id="overallV">36 × 16 × 32 in</span></div>
       <div class="row"><span>Scallop span</span><span class="val" id="spanV">4.93 in</span></div>
-      <div class="row"><span>Stock</span><span class="val">¾ in solid</span></div>
-      <div class="row"><span>Display tiers</span><span class="val">3 + back</span></div>
+      <div class="row"><span>Stock</span><span class="val" id="stockV">¾ in solid</span></div>
+      <div class="row"><span>Display tiers</span><span class="val" id="tiersV">3 + back</span></div>
       <div class="row"><span>Baseboard cutaway</span><span class="val" id="cutV">4½ × ¾ in</span></div>
-      <div class="row"><span>Cubby opening</span><span class="val">11 × 8⅞ in</span></div>
-      <div class="row"><span>Pocket depth</span><span class="val">≈ 1½–2½ in</span></div>
+      <div class="row"><span>Cubby opening</span><span class="val" id="cubbyV">11 × 8⅞ in</span></div>
+      <div class="row"><span>Pocket depth</span><span class="val" id="pocketV">≈ 1⅜–2½ in</span></div>
     </div>
   </aside>
 </div>
@@ -121,17 +125,20 @@ input[type=range]{width:100%; accent-color:var(--accent)}
   // ---- dimensions (inches) ----
   const T = 0.75;              // stock thickness
   const OW = 36;               // overall width
+  const OH = 32;               // overall height
   const IW = OW - 2*T;         // between sides
   const HB = 12;               // height of the cubby base (top surface)
   const FOOT = 1.6;            // underside of the cubby floor (foot cut-out height)
   const DEPTH = 16;            // overall depth; back edge sits on the wall
-  const S = 13.4 / (32 - HB);  // front slope of side panels above the base
+  const TOPZ = 13.4;           // depth of the side panels' sloped front at the top
+  const S = TOPZ / (OH - HB);  // front slope of side panels above the base
+  const BACK_INSET = 0.5;      // back panel top sits this far behind the sides' front edge
   const K = 0.12;              // lean of each tier board (tan of angle back from vertical)
   const LEAN = Math.atan(K);
   const NB = 4;                              // 3 tiers + back panel
   const tops = [18, 24, 29, 31.75];
   const bottoms = [HB, HB, 18.5, 23.5];      // pocket floors: cubby top, then shelves
-  const zTop = i => i === NB - 1 ? 13.9 : S * (tops[i] - HB);   // depth of tier top (positive = back)
+  const zTop = i => i === NB - 1 ? TOPZ + BACK_INSET : S * (tops[i] - HB);   // depth of tier top (positive = back)
   const zAt = (i, y) => zTop(i) - K * (tops[i] - y);            // face plane depth at height y
 
   const WOODS = [
@@ -150,6 +157,10 @@ input[type=range]{width:100%; accent-color:var(--accent)}
   ];
   const state = { count:7, depth:1.1, back:false, books:true, finish:{type:'wood', i:0}, spin:false, bbH:4.5, bbD:0.75, wall:true };
   const cubbyDepth = () => Math.min(15.5, DEPTH - state.bbD - 0.3);
+  const openW = (IW - 2*T) / 3;               // cubby opening width
+  const innerH = HB - T - (FOOT + T);         // cubby opening height
+  // horizontal gap at the floor of pocket p, between board p's back face and board p+1's front face
+  const pocketDepth = p => { const y = bottoms[p+1]; return zAt(p+1, y) - zAt(p, y) - T / Math.cos(LEAN); };
   function inch(v){
     const whole = Math.floor(v + 1e-6), e = Math.round((v - whole) * 8);
     const fr = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
@@ -278,10 +289,10 @@ input[type=range]{width:100%; accent-color:var(--accent)}
     s.lineTo(notchZ, 0);
     s.lineTo(notchZ, state.bbH);
     s.lineTo(DEPTH, state.bbH);
-    s.lineTo(DEPTH, 32);                               // vertical back edge, flush to the wall
-    const zf = S * (32 - HB);
-    s.lineTo(zf + 0.6, 32);
-    s.quadraticCurveTo(zf, 32, zf - 0.25, 31.4);
+    s.lineTo(DEPTH, OH);                               // vertical back edge, flush to the wall
+    const zf = TOPZ;
+    s.lineTo(zf + 0.6, OH);
+    s.quadraticCurveTo(zf, OH, zf - 0.25, OH - 0.6);
     s.lineTo(0.35, HB + 0.5);                       // sloped front above the base
     s.quadraticCurveTo(0, HB, 0, HB - 0.6);         // eased corner into the vertical base front
     s.closePath();
@@ -290,7 +301,14 @@ input[type=range]{width:100%; accent-color:var(--accent)}
 
   let model = null;
   function build(){
-    if (model){ model.traverse(o => { if (o.geometry) o.geometry.dispose(); }); scene.remove(model); }
+    if (model){
+      // books, wall and trim get fresh materials each build; the two wood materials are shared
+      model.traverse(o => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) [].concat(o.material).forEach(m => { if (m !== woodMat && m !== woodBoxMat) m.dispose(); });
+      });
+      scene.remove(model);
+    }
     model = new THREE.Group();
     const add = (mesh) => { mesh.castShadow = mesh.receiveShadow = true; model.add(mesh); return mesh; };
     const d = Math.min(state.depth, (IW/state.count)/2);
@@ -307,8 +325,6 @@ input[type=range]{width:100%; accent-color:var(--accent)}
     const CD = cubbyDepth();
     box(IW, T, CD, 0, FOOT + T/2, -CD/2);
     box(IW, T, CD, 0, HB - T/2, -CD/2);
-    const openW = (IW - 2*T) / 3;
-    const innerH = HB - T - (FOOT + T);
     [-1, 1].forEach(sx => box(T, innerH, CD - 0.1, sx * (openW/2 + T/2), FOOT + T + innerH/2, -(CD/2 + 0.05)));
     box(IW, HB - FOOT, 0.25, 0, FOOT + (HB - FOOT)/2, -(CD + 0.125));
 
@@ -478,6 +494,14 @@ input[type=range]{width:100%; accent-color:var(--accent)}
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
+
+  // fixed spec values, derived from the dimensions above
+  const pockets = [0, 1, 2].map(pocketDepth);
+  $('overallV').textContent = OW + ' × ' + DEPTH + ' × ' + OH + ' in';
+  $('stockV').textContent = inch(T) + ' solid';
+  $('tiersV').textContent = (NB - 1) + ' + back';
+  $('cubbyV').textContent = inch(openW).replace(' in', '') + ' × ' + inch(innerH);
+  $('pocketV').textContent = '≈ ' + inch(Math.min(...pockets)).replace(' in', '') + '–' + inch(Math.max(...pockets));
 
   applyFinish();
   build();
