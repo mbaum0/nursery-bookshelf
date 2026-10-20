@@ -62,6 +62,21 @@ dialog::backdrop{background:rgba(20,16,12,.45)}
 .cutdoc td:not(:last-child){font-family:var(--f-mono); font-variant-numeric:tabular-nums; white-space:nowrap}
 .cutdoc td:nth-child(2){font-family:var(--f-display)}
 figure.sheet{margin:8px 0 4px}
+figure.shop{margin:14px 0}
+figure.shop svg{width:100%; height:auto; display:block}
+figure.shop.tall svg{max-height:85vh}
+.shop-h{font-size:14px; margin-bottom:4px}
+.shop-grid{display:grid; grid-template-columns:1fr; gap:4px}
+.sh{fill:var(--stage); stroke:var(--fg); stroke-width:1.6px; vector-effect:non-scaling-stroke}
+.ph{fill:none; stroke:var(--muted); stroke-width:1px; stroke-dasharray:4 3; vector-effect:non-scaling-stroke}
+.bv{stroke:var(--accent); stroke-width:1.5px; stroke-dasharray:6 4; vector-effect:non-scaling-stroke}
+.dx{stroke:var(--muted); stroke-width:.7px; vector-effect:non-scaling-stroke}
+.dl2{stroke:var(--fg); stroke-width:.9px; vector-effect:non-scaling-stroke}
+.dtx{font-family:var(--f-mono); fill:var(--fg); text-anchor:middle}
+.dnt{font-family:var(--f-display); fill:var(--fg)}
+.ddot{fill:var(--fg)}
+.pn{fill:var(--accent)}
+.pnx{font:650 .5px var(--f-mono); fill:#fff; text-anchor:middle}
 figure.sheet svg{width:100%; height:auto; display:block}
 .ps{fill:var(--stage); stroke:var(--muted); stroke-width:.15}
 .pc{fill:var(--accent); fill-opacity:.06; stroke:var(--accent); stroke-width:.1}
@@ -104,7 +119,8 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   .cutdoc td{padding:3pt 8pt 3pt 0}
   .tw{overflow:visible}
   .cutdoc h3{break-after:avoid; margin-top:14pt}
-  .cutdoc tr, figure.sheet, figure.drawing, figure.step{break-inside:avoid}
+  .cutdoc tr, figure.sheet, figure.drawing, figure.step, figure.shop{break-inside:avoid}
+  figure.shop.tall svg{max-height:9in}
   figure.drawing svg{max-height:8.5in}
   figure.drawing + figure.drawing svg{max-height:2.5in}
   .steps{grid-template-columns:1fr 1fr; gap:10pt}
@@ -370,41 +386,53 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     const s = new THREE.Shape();
     s.moveTo(0, 0); s.lineTo(width, 0);
     if (!n || d <= 0){ s.lineTo(width, len); s.lineTo(0, len); s.closePath(); return s; }
-    const w = width / n;
+    // each scallop is a circular arc (chord w, rise d) so it can be drawn with a compass
+    const {w, r} = scallopArc(width, n, d), a0 = Math.atan2(r - d, w / 2);
     s.lineTo(width, len - d);
-    for (let j = n - 1; j >= 0; j--){
-      const cx = (j + 0.5) * w;
-      for (let k = 1; k <= 24; k++){
-        const t = Math.PI * k / 24;
-        s.lineTo(cx + (w/2) * Math.cos(t), len - d + d * Math.sin(t));
-      }
-    }
+    for (let j = n - 1; j >= 0; j--) s.absarc((j + 0.5) * w, len - r, r, a0, Math.PI - a0, false);
     s.closePath();
     return s;
   }
+  const scallopArc = (width, n, d) => { const w = width / n; return {w, r:(w * w / 4 + d * d) / (2 * d)}; };
   const extrude = (shape) => new THREE.ExtrudeGeometry(shape, {depth:T, bevelEnabled:true, bevelThickness:0.06, bevelSize:0.06, bevelSegments:2, curveSegments:24});
 
-  const footEndZ = () => DEPTH - notchD() - 1.25;   // back end of the foot arch: the rear foot is 1¼ in wide
+  const FRONT_FOOT = 2.25, REAR_FOOT = 1.25;   // foot widths on the floor
+  const R_TOP = 1, R_BASE = 2;                   // fillets at the top front corner and where the slope meets the base
+  const footEndZ = () => DEPTH - notchD() - REAR_FOOT;   // back end of the foot arch
+  function sideOutline(){
+    // The side as straight edges and true arcs, counter-clockwise from the front bottom corner, so the same
+    // numbers build the model and the shop drawing. u = back from the front edge, v = up from the floor.
+    // P and Q are the sharp corners of the 25° slope you lay out first; the fillets then round them off.
+    const A = SLOPE_DEG * Math.PI / 180, sn = Math.sin(A), cs = Math.cos(A), nz = DEPTH - notchD(), fe = footEndZ();
+    const tTop = R_TOP / Math.tan((Math.PI / 2 + A) / 2), tBase = R_BASE / Math.tan((Math.PI - A) / 2);   // fillet tangent lengths
+    const P = [TOPZ, OH], Q = [0, HB];
+    return {P, Q, A, nz, fe, tTop, tBase, segs:[
+      {to:[FRONT_FOOT, 0]},
+      {to:[FRONT_FOOT + ARCH, ARCH], arc:{c:[FRONT_FOOT + ARCH, 0], r:ARCH, cw:true}},   // foot arch: corner radius = its height
+      {to:[fe - ARCH, ARCH]},
+      {to:[fe, 0], arc:{c:[fe - ARCH, 0], r:ARCH, cw:true}},
+      {to:[nz, 0]},
+      {to:[nz, notchH()]},                                                               // baseboard cutaway
+      {to:[DEPTH, notchH()]},
+      {to:[DEPTH, OH]},                                                                  // back edge, flush to the wall
+      {to:[TOPZ + tTop, OH]},
+      {to:[P[0] - tTop * sn, P[1] - tTop * cs], arc:{c:[TOPZ + tTop, OH - R_TOP], r:R_TOP, cw:false}},
+      {to:[Q[0] + tBase * sn, Q[1] + tBase * cs]},                                       // the slope
+      {to:[0, HB - tBase], arc:{c:[R_BASE, HB - tBase], r:R_BASE, cw:false}},
+      {to:[0, 0]}
+    ]};
+  }
   function sideShape(){
-    // u = depth (back is +), v = height
     const s = new THREE.Shape();
+    let at = [0, 0];
     s.moveTo(0, 0);
-    s.lineTo(2.25, 0);
-    s.lineTo(2.25, 0.25);
-    s.quadraticCurveTo(2.25, ARCH, 3.25, ARCH);     // arched foot cut-out
-    const notchZ = DEPTH - notchD();                   // baseboard cutaway at the lower back
-    const footEnd = footEndZ();
-    s.lineTo(footEnd - 1, ARCH);
-    s.quadraticCurveTo(footEnd, ARCH, footEnd, 0.25);
-    s.lineTo(footEnd, 0);
-    s.lineTo(notchZ, 0);
-    s.lineTo(notchZ, notchH());
-    s.lineTo(DEPTH, notchH());
-    s.lineTo(DEPTH, OH);                               // vertical back edge, flush to the wall
-    s.lineTo(TOPZ + 0.6, OH);
-    s.quadraticCurveTo(TOPZ, OH, TOPZ - 0.6*S, OH - 0.6);
-    s.lineTo(0.5*S, HB + 0.5);                      // sloped front above the base
-    s.quadraticCurveTo(0, HB, 0, HB - 0.6);         // eased corner into the vertical base front
+    sideOutline().segs.forEach(g => {
+      if (g.arc){
+        const {c, r, cw} = g.arc;
+        s.absarc(c[0], c[1], r, Math.atan2(at[1] - c[1], at[0] - c[0]), Math.atan2(g.to[1] - c[1], g.to[0] - c[0]), cw);
+      } else s.lineTo(g.to[0], g.to[1]);
+      at = g.to;
+    });
     s.closePath();
     return s;
   }
@@ -585,18 +613,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       ...tops.map((top, i) => ({part:'FGHJ'[i], face:'Back face, along the bottom edge', n:Math.ceil(IW / 10), into:floorUnder[i]})),
       ...[1, 2].map((i, k) => ({part:'KL'[k], face:'Bottom face, ' + per(shelf(i).depth) + ' at each end', n:2 * per(shelf(i).depth), into:'Sides'}))
     ];
-    const fe = footEndZ(), nz = DEPTH - notchD();
-    const profile = [
-      ['Front foot', range(0, 2.25), 'On the floor'],
-      ['Foot arch', range(2.25, fe), frac(ARCH) + ' in tall, 1 in corner curves'],
-      ['Rear foot', range(fe, nz), 'On the floor'],
-      ['Baseboard cutaway', range(nz, DEPTH), frac(notchH()) + ' tall (trim ' + frac(state.bbH) + ' × ' + frac(state.bbD) + ' + ' + frac(CLEAR) + ' clearance)'],
-      ['Back edge', frac(DEPTH), range(notchH(), OH) + ' high, square to the floor'],
-      ['Top', range(TOPZ + 0.6, DEPTH), frac(OH) + ' high, flat'],
-      ['Front slope', range(0.5*S, TOPZ - 0.6*S), 'Straight at ' + SLOPE_DEG + '° from vertical, from ' + frac(HB + 0.5) + ' up to ' + frac(OH - 0.6) + ' high, eased at both ends'],
-      ['Front of base', '0', range(0, HB - 0.6) + ' high, vertical']
-    ];
-    return {parts, lines, dividers, profile, holes};
+    return {parts, lines, dividers, holes};
   }
 
   const esc = s => String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'})[ch]);
@@ -688,6 +705,120 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       '<figcaption>Red numbered lines are the straight saw cuts, in order. Shaded outlines are the final shapes, cut with a jigsaw or bandsaw once the part is free. A dashed edge gets the ' + LEAN_DEG + '° bevel.</figcaption></figure>' +
       table(['Cut', 'Type', 'Piece being cut (W × L)', 'Cut off'], sheet.cuts.map((c, k) => [k + 1, c.kind + (c.kind === 'Rip' ? ' (with the grain)' : ' (across the grain)'),
         frac(c.piece[0]) + ' × ' + frac(c.piece[1]), frac(c.at) + (c.kind === 'Rip' ? ' wide strip, from the edge' : ' long, from the end')]));
+  }
+
+  // ---- shop drawings: every part with every edge dimensioned ----
+  const f2 = n => n.toFixed(3);
+  function dim(x1, y1, x2, y2, off, label, fs){
+    // a dimension between two points (drawing coords, y down), set off to one side with extension lines and slash ticks
+    const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    const a = [x1 + nx * off, y1 + ny * off], b = [x2 + nx * off, y2 + ny * off], sg = Math.sign(off) || 1, e = fs * 0.35;
+    const ext = (p, q) => '<line x1="' + f2(p[0] + nx * sg * fs * 0.25) + '" y1="' + f2(p[1] + ny * sg * fs * 0.25) + '" x2="' + f2(q[0] + nx * sg * e) + '" y2="' + f2(q[1] + ny * sg * e) + '" class="dx"/>';
+    const tick = q => '<line x1="' + f2(q[0] - (ux + nx) * e * 0.7) + '" y1="' + f2(q[1] - (uy + ny) * e * 0.7) + '" x2="' + f2(q[0] + (ux + nx) * e * 0.7) + '" y2="' + f2(q[1] + (uy + ny) * e * 0.7) + '" class="dl2"/>';
+    let ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    if (ang > 90.01 || ang < -89.99) ang += 180;   // keep text reading left to right or bottom to top
+    const tx = (a[0] + b[0]) / 2 + nx * sg * fs * 0.45, ty = (a[1] + b[1]) / 2 + ny * sg * fs * 0.45;
+    return ext([x1, y1], a) + ext([x2, y2], b) + '<line x1="' + f2(a[0]) + '" y1="' + f2(a[1]) + '" x2="' + f2(b[0]) + '" y2="' + f2(b[1]) + '" class="dl2"/>' + tick(a) + tick(b) +
+      '<text x="' + f2(tx) + '" y="' + f2(ty) + '" transform="rotate(' + ang.toFixed(2) + ' ' + f2(tx) + ' ' + f2(ty) + ')" class="dtx" style="font-size:' + fs + 'px" dominant-baseline="middle">' + esc(label) + '</text>';
+  }
+  const note = (x, y, text, fs, anchor) => '<text x="' + f2(x) + '" y="' + f2(y) + '" class="dnt" style="font-size:' + fs + 'px" text-anchor="' + (anchor || 'start') + '">' + esc(text) + '</text>';
+  const leader = (x1, y1, x2, y2) => '<line x1="' + f2(x1) + '" y1="' + f2(y1) + '" x2="' + f2(x2) + '" y2="' + f2(y2) + '" class="dx"/><circle cx="' + f2(x1) + '" cy="' + f2(y1) + '" r="0.12" class="ddot"/>';
+  const shopFig = (title, sub, vb, body, cls) => '<figure class="shop' + (cls ? ' ' + cls : '') + '"><div class="shop-h"><b>' + esc(title) + '</b> ' + esc(sub) + '</div><svg viewBox="' + vb.map(f2).join(' ') + '" role="img" aria-label="' + esc(title) + ' shop drawing">' + body + '</svg></figure>';
+
+  function sideDrawing(){
+    const o = sideOutline(), Y = v => OH - v, fs = 0.62, deg = SLOPE_DEG;
+    let at = [0, 0], d = 'M0,' + f2(Y(0));
+    o.segs.forEach(g => {
+      // y is flipped for the screen, so a counter-clockwise arc in model coords draws with sweep-flag 0
+      d += g.arc ? ' A' + f2(g.arc.r) + ',' + f2(g.arc.r) + ' 0 0 ' + (g.arc.cw ? 1 : 0) + ' ' + f2(g.to[0]) + ',' + f2(Y(g.to[1]))
+                 : ' L' + f2(g.to[0]) + ',' + f2(Y(g.to[1]));
+      at = g.to;
+    });
+    const nh = notchH(), {P, Q, nz, fe} = o;
+    const pts = [[0, 0], ...o.segs.map(g => g.to)].slice(0, -1);
+    const body =
+      '<path d="' + d + ' Z" class="sh"/>' +
+      // phantom sharp corners for layout
+      '<polyline points="' + f2(TOPZ + 1.5) + ',' + f2(Y(OH)) + ' ' + f2(P[0]) + ',' + f2(Y(P[1])) + ' ' + f2(P[0] - 1.5 * Math.sin(o.A)) + ',' + f2(Y(P[1] - 1.5 * Math.cos(o.A))) + '" class="ph"/>' +
+      '<polyline points="0,' + f2(Y(HB - 1.5)) + ' 0,' + f2(Y(HB)) + ' ' + f2(1.5 * Math.sin(o.A)) + ',' + f2(Y(HB + 1.5 * Math.cos(o.A))) + '" class="ph"/>' +
+      note(P[0] - 0.4, Y(OH) - 0.5, 'P', fs, 'end') + note(-0.4, Y(HB) + 0.2, 'Q', fs, 'end') +
+      // bottom chain and overall depth
+      // (offsets: + is below a left-to-right edge and right of an upward edge)
+      dim(0, Y(0), FRONT_FOOT, Y(0), 1.3, frac(FRONT_FOOT), fs) + dim(FRONT_FOOT, Y(0), fe, Y(0), 1.3, frac(fe - FRONT_FOOT) + ' arch', fs) +
+      dim(fe, Y(0), nz, Y(0), 1.3, frac(REAR_FOOT), fs) + dim(nz, Y(0), DEPTH, Y(0), 1.3, frac(DEPTH - nz), fs) +
+      dim(0, Y(0), DEPTH, Y(0), 3, frac(DEPTH) + ' overall', fs) +
+      // back edge chain and overall height
+      dim(DEPTH, Y(0), DEPTH, Y(nh), 1.3, frac(nh), fs) + dim(DEPTH, Y(nh), DEPTH, Y(OH), 1.3, frac(OH - nh), fs) +
+      dim(DEPTH, Y(0), DEPTH, Y(OH), 3, frac(OH) + ' overall', fs) +
+      // the slope's sharp corners
+      dim(0, Y(0), 0, Y(HB), -1.3, frac(HB) + ' to Q', fs) +
+      dim(0, Y(OH), P[0], Y(OH), -1.3, frac(P[0]) + ' to P', fs) + dim(P[0], Y(OH), DEPTH, Y(OH), -1.3, frac(DEPTH - P[0]), fs) +
+      dim(Q[0], Y(Q[1]), P[0], Y(P[1]), -1.2, frac(Math.hypot(P[0] - Q[0], P[1] - Q[1])) + ' Q to P, ' + deg + '° from vertical', fs) +
+      // arch height and radii
+      dim(FRONT_FOOT + ARCH + 1.5, Y(0), FRONT_FOOT + ARCH + 1.5, Y(ARCH), 0.6, frac(ARCH), fs * 0.85) +
+      leader(FRONT_FOOT + ARCH * 0.29, Y(ARCH * 0.71), FRONT_FOOT + 1.6, Y(3.2)) + note(FRONT_FOOT + 1.7, Y(3.3), 'R' + frac(ARCH) + ' both arch corners', fs * 0.85) +
+      leader(TOPZ + o.tTop - R_TOP * 0.6, Y(OH - R_TOP + R_TOP * 0.8), TOPZ - 3.5, Y(OH - 2.6)) + note(TOPZ - 3.6, Y(OH - 2.7), 'R' + frac(R_TOP), fs * 0.85, 'end') +
+      leader(R_BASE - R_BASE * 0.94, Y(HB - o.tBase + R_BASE * 0.34), 3.4, Y(HB + 3)) + note(3.5, Y(HB + 3.1), 'R' + frac(R_BASE), fs * 0.85) +
+      // numbered outline points (see the table)
+      pts.map((p, i) => '<circle cx="' + f2(p[0]) + '" cy="' + f2(Y(p[1])) + '" r="0.42" class="pn"/><text x="' + f2(p[0]) + '" y="' + f2(Y(p[1]) + 0.2) + '" class="pnx">' + (i + 1) + '</text>').join('');
+    return shopFig('A · Side', 'make 2 (mirror pair) · ' + frac(T) + ' thick · grain vertical', [-6, -3.5, DEPTH + 11.5, OH + 8], body, 'tall') +
+      '<p class="fine">Lay out the slope first: mark Q on the front edge ' + frac(HB) + ' up and P on the top edge ' + frac(P[0]) + ' back, and join them (' + deg + '° from vertical). Then round P with a ' + frac(R_TOP) + ' in radius and Q with a ' + frac(R_BASE) +
+      ' in radius, and draw the foot arch with ' + frac(ARCH) + ' in radius corners. Every point and arc centre is in the outline table below.</p>';
+  }
+  function boardDrawing(p, opts){
+    // a board seen face-on: length across, width up; optional scallops on the top edge and a bevel on the bottom edge
+    const L = p.l, W = p.w, fs = Math.max(0.55, Math.max(L, W) / 42), Y = y => W - y;
+    let body = '', d;
+    if (opts.n){
+      const {w, r} = scallopArc(L, opts.n, opts.d), v = W - opts.d;
+      d = 'M0,' + f2(Y(0)) + ' L' + f2(L) + ',' + f2(Y(0)) + ' L' + f2(L) + ',' + f2(Y(v));
+      for (let j = opts.n - 1; j >= 0; j--) d += ' A' + f2(r) + ',' + f2(r) + ' 0 0 0 ' + f2(j * w) + ',' + f2(Y(v));   // bumps up
+      body += '<path d="' + d + ' Z" class="sh"/>' +
+        dim(0, Y(0), 0, Y(v), -1.6 * fs, frac(v) + ' at the ends', fs) +
+        dim(L, Y(0), L, Y(W), 1.6 * fs, frac(W) + ' to the tips', fs) +
+        dim(0, Y(v), w, Y(v), -2.2 * fs, frac(w) + ' each', fs) +
+        note(w * 1.3, Y(W) - 1.1 * fs, opts.n + ' equal arcs: ' + frac(w) + ' chord, ' + frac(opts.d) + ' rise, radius ' + frac(r) + ', centres ' + frac(r) + ' below the tips', fs * 0.9);
+    } else {
+      body += '<rect x="0" y="0" width="' + f2(L) + '" height="' + f2(W) + '" class="sh"/>' + dim(0, Y(0), 0, Y(W), -1.6 * fs, frac(W), fs);
+    }
+    body += dim(0, Y(0), L, Y(0), 1.6 * fs, frac(L), fs);
+    if (opts.bevel) body += '<line x1="0" y1="' + f2(Y(0) - 0.25) + '" x2="' + f2(L) + '" y2="' + f2(Y(0) - 0.25) + '" class="bv"/>' +
+      note(L / 2, Y(0) - 0.7 * fs, opts.bevel, fs * 0.85, 'middle');
+    if (opts.marks) body += opts.marks(Y, fs);
+    const top = opts.n || opts.marks ? 3.6 * fs : 1.2 * fs;
+    return shopFig(p.id + ' · ' + p.name, 'make ' + p.qty + ' · ' + frac(p.t) + ' thick · ' + opts.sub, [-2.6 * fs, -top, L + 5 * fs, W + top + 3 * fs], body, opts.cls);
+  }
+  function shopDrawings(parts){
+    const by = id => parts.find(p => p.id === id), d = scallopDepth(), xs = [0, 1].map(j => openW + j * (openW + T));
+    const divMarks = (Y, fs) => xs.map(x => '<rect x="' + f2(x) + '" y="0" width="' + f2(T) + '" height="' + f2(by('B').w) + '" class="lay"/>').join('') +
+      dim(0, 0, xs[0], 0, -1.1 * fs, frac(xs[0]), fs * 0.85) + dim(0, 0, xs[1], 0, -2.4 * fs, frac(xs[1]), fs * 0.85);
+    const tierBevel = LEAN_DEG + '° bevel on this edge, long point on the front face';
+    return sideDrawing() +
+      '<div class="shop-grid">' +
+      ['F', 'G', 'H', 'J'].map((id, i) => boardDrawing(by(id), {n:i < NB - 1 || state.back ? state.count : 0, d, bevel:tierBevel, sub:'grain along the length', cls:'wide'})).join('') +
+      boardDrawing(by('B'), {sub:'grain along the length · front edge at the bottom', marks:divMarks, cls:'wide'}) +
+      boardDrawing(by('C'), {sub:'grain along the length · front edge at the bottom', marks:divMarks, cls:'wide'}) +
+      boardDrawing(by('K'), {bevel:LEAN_DEG + '° bevel on the front edge', sub:'grain along the length', cls:'wide'}) +
+      boardDrawing(by('L'), {bevel:LEAN_DEG + '° bevel on the front edge', sub:'grain along the length', cls:'wide'}) +
+      boardDrawing(by('E'), {sub:'plywood', cls:'wide'}) +
+      boardDrawing(Object.assign({}, by('D'), {l:by('D').w, w:by('D').l}), {sub:'grain vertical · height up, depth across'}) +
+      '</div>';
+  }
+  function outlineTable(){
+    const o = sideOutline(), pts = [[0, 0], ...o.segs.map(g => g.to)];
+    const dirOf = (a, b) => {
+      const du = b[0] - a[0], dv = b[1] - a[1];
+      if (Math.abs(du) < 1e-6) return dv > 0 ? 'straight up' : 'straight down';
+      if (Math.abs(dv) < 1e-6) return du > 0 ? 'straight back' : 'straight forward';
+      return 'along the slope, ' + SLOPE_DEG + '° from vertical';
+    };
+    return o.segs.map((g, i) => {
+      const a = pts[i], b = g.to, next = i + 2 > o.segs.length ? 1 : i + 2;
+      const edge = g.arc ? 'Arc, radius ' + frac(g.arc.r) + ', centre ' + frac(g.arc.c[0]) + ' back, ' + frac(g.arc.c[1]) + ' up'
+        : frac(Math.hypot(b[0] - a[0], b[1] - a[1])) + ' ' + dirOf(a, b);
+      return [i + 1, frac(a[0]), frac(a[1]), edge + ' to point ' + next];
+    }).concat([['P', frac(o.P[0]), frac(o.P[1]), 'Sharp layout corner on the top edge (rounded by the ' + frac(R_TOP) + ' in arc)'],
+               ['Q', frac(o.Q[0]), frac(o.Q[1]), 'Sharp layout corner on the front edge (rounded by the ' + frac(R_BASE) + ' in arc)']]);
   }
 
   // ---- layout drawings ----
@@ -794,7 +925,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   }
 
   function renderCutList(){
-    const {parts, lines, dividers, profile, holes} = cutList();
+    const {parts, lines, dividers, holes} = cutList();
     const screws = holes.reduce((a, h) => a + h.n, 0);
     const sheets = packSheets(parts);
     const wood = state.finish.type === 'wood' ? WOODS[state.finish.i].name : 'paint-grade poplar or maple';
@@ -814,7 +945,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       ' long, the distance between the sides. Tier widths are measured along the face, from the long point of the bevel to the scallop tips.</p>' +
       '<h3>Cut list</h3>' +
       table(['Part', 'Qty', 'Width', 'Length', 'From', 'Angles'], parts.map(p => [p.id + ' ' + p.name, p.qty, frac(p.w), frac(p.l), where(p.id), p.ang])) +
-      '<p class="fine">Cut every part to its width and length square first, then cut the angles. Angles are measured from square, so a 5° bevel is the blade tilted 5°. Side profiles, scallops and layout lines come from the tables further down.</p>' +
+      '<p class="fine">Cut every part to its width and length square first, then cut the angles. Angles are measured from square, so a 5° bevel is the blade tilted 5°. Side profiles, scallops and layout lines come from the shop drawings further down.</p>' +
       '<h3>Sheet layout</h3>' +
       sheets.map((sh, i) => sheetSVG(sh, i + 1, sheets.length)).join('') +
       '<p class="fine">' + sheets.length + ' sheet' + (sheets.length > 1 ? 's' : '') + ' of ' + frac(T) + ' in ' + esc(veneer) + ', with a ' + frac(KERF) +
@@ -823,6 +954,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       '<details class="fine"><summary>Building from solid lumber instead</summary>' +
       table(['Part', 'Qty', 'Rough W × L', 'Boards per panel', 'Board feet'], parts.filter(p => !p.ply).map(p => [p.id + ' ' + p.name, p.qty, frac(p.rw) + ' × ' + frac(p.rl), p.boards, p.bf.toFixed(1)])) +
       '<p>Stock: ' + esc(wood) + ', 4/4 rough, milled to ' + frac(T) + ' in. Parts need ' + bf.toFixed(1) + ' bd ft. Buy about ' + Math.ceil(bf * 1.3) + ' bd ft to cover defects and offcuts.</p></details>' +
+      '<h3>Shop drawings</h3><p class="fine">Every part drawn face-on with every edge dimensioned, in inches to the nearest 1/16. Measure from the edges shown; arcs give their radius and centre.</p>' + shopDrawings(parts) +
       '<h3>Layout lines</h3>' + sideSVG() + dividerSVG() +
       table(['Part', 'For', 'Height (in)', 'From front (in)', 'Notes'], lines.map(x => [x.part, x.what, x.h, x.z, x.note])) +
       '<p class="fine">Draw these on the inside faces of both sides before you cut the profile, measuring from the blank\'s bottom and front edges. Divider positions on B (top face) and C (bottom face), measured from the left end: ' + dividers.join(' and ') + '.</p>' +
@@ -830,8 +962,8 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       table(['Part', 'Where', 'Total', 'Screws into'], holes.map(h => [h.part, h.face, h.n, h.into])) +
       '<p class="fine">Drill for ' + frac(T) + ' in stock and use 1¼ in pocket screws: ' + screws + ' in all, plus a few spares. Coarse thread for plywood and softwood, fine thread for hardwood. ' +
       'Keep holes about 1½ in from each edge and spread the rest evenly. Fix each divider (D) with two countersunk 1¼ in screws up through B and two down through C, and plug the ones in C.</p>' +
-      '<h3>Side profile</h3>' +
-      table(['Feature', 'From front (in)', 'Height / notes'], profile) +
+      '<h3>Side outline points</h3>' +
+      table(['Point', 'Back from front (in)', 'Up from bottom (in)', 'Edge to the next point'], outlineTable()) +
       '<h3>Assembly</h3><p class="fine">New parts in each step are shown in wood; parts already in place are ghosted. Clamp each part on its layout lines before you drive its screws.</p><div class="steps" id="steps"></div>';
     fillSteps();
     scheduleSteps();
