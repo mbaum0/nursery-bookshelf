@@ -48,6 +48,24 @@ input[type=range]{width:100%; accent-color:var(--accent)}
 .spec{border-top:1px solid var(--line); padding-top:16px; display:flex; flex-direction:column; gap:8px}
 .spec .row{font-size:13px; color:var(--muted)}
 .spec .row .val{color:var(--fg)}
+dialog{width:min(980px, calc(100vw - 32px)); max-height:calc(100vh - 48px); padding:24px; box-sizing:border-box;
+  background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:10px}
+dialog::backdrop{background:rgba(20,16,12,.45)}
+.cut-head{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap}
+.cut-head h2{margin:6px 0 4px; font-size:22px; font-weight:650}
+#cutBody h3{margin:24px 0 8px; font-size:16px; font-weight:650}
+.fine{font-size:13px; line-height:1.5; color:var(--muted); max-width:72ch}
+.tw{overflow-x:auto}
+#cutBody table{border-collapse:collapse; width:100%; font-size:13px}
+#cutBody th{text-align:left; font:500 11px/1.2 var(--f-mono); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding:6px 10px 6px 0; border-bottom:1px solid var(--line); white-space:nowrap}
+#cutBody td{padding:7px 10px 7px 0; border-bottom:1px solid var(--line); vertical-align:top}
+#cutBody td:not(:last-child){font-family:var(--f-mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+#cutBody td:nth-child(2){font-family:var(--f-display)}
+@media print{
+  .app, .cut-head .views{display:none}
+  dialog{position:static; width:auto; max-height:none; border:0; padding:0; background:#fff; color:#000}
+  dialog::backdrop{display:none}
+}
 @media (max-width:760px){
   .app{grid-template-columns:minmax(0,1fr); grid-template-rows:62vh auto; height:auto}
   .rail{border-left:0; border-top:1px solid var(--line); padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px))}
@@ -114,9 +132,26 @@ input[type=range]{width:100%; accent-color:var(--accent)}
       <div class="row"><span>Baseboard cutaway</span><span class="val" id="cutV">4½ × ¾ in</span></div>
       <div class="row"><span>Cubby opening</span><span class="val" id="cubbyV">11 × 8⅞ in</span></div>
       <div class="row"><span>Pocket depth</span><span class="val" id="pocketV">≈ 1⅜–2½ in</span></div>
+      <button class="btn primary" id="cutOpen" style="margin-top:6px">Parts &amp; cut list</button>
     </div>
   </aside>
 </div>
+
+<dialog id="cut" aria-labelledby="cutTitle">
+  <div class="cut-head">
+    <div>
+      <div class="eyebrow">Generated from the current settings</div>
+      <h2 id="cutTitle">Parts &amp; cut list</h2>
+      <div class="fine" id="cutMeta"></div>
+    </div>
+    <div class="views">
+      <button class="btn" id="cutCsv">Download CSV</button>
+      <button class="btn" id="cutPrint">Print</button>
+      <button class="btn primary" id="cutClose">Close</button>
+    </div>
+  </div>
+  <div id="cutBody"></div>
+</dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -128,13 +163,18 @@ input[type=range]{width:100%; accent-color:var(--accent)}
   const OH = 32;               // overall height
   const IW = OW - 2*T;         // between sides
   const HB = 12;               // height of the cubby base (top surface)
-  const FOOT = 1.6;            // underside of the cubby floor (foot cut-out height)
+  const FOOT = 1.6;            // underside of the cubby floor
+  const ARCH = 1;              // height of the arched foot cut-out; leaves a ledge under the floor's dado
+  const DADO = 0.25;           // depth of every dado (sides, cubby floor and top)
+  const CLEAR = 0.125;         // clearance added to the baseboard cutaway
+  const PLY = 0.25;            // cubby back panel thickness
   const DEPTH = 16;            // overall depth; back edge sits on the wall
   const TOPZ = 13.4;           // depth of the side panels' sloped front at the top
   const S = TOPZ / (OH - HB);  // front slope of side panels above the base
   const BACK_INSET = 0.5;      // back panel top sits this far behind the sides' front edge
-  const K = 0.12;              // lean of each tier board (tan of angle back from vertical)
-  const LEAN = Math.atan(K);
+  const LEAN_DEG = 5;          // lean of each tier board back from vertical (a whole 5° for easy saw setups)
+  const LEAN = LEAN_DEG * Math.PI / 180;
+  const K = Math.tan(LEAN);
   const NB = 4;                              // 3 tiers + back panel
   const tops = [18, 24, 29, 31.75];
   const bottoms = [HB, HB, 18.5, 23.5];      // pocket floors: cubby top, then shelves
@@ -156,7 +196,11 @@ input[type=range]{width:100%; accent-color:var(--accent)}
     {name:'Benjamin Moore Soft Jazz (809)', color:'#81A5C0'}   // rgb(129, 165, 192)
   ];
   const state = { count:7, depth:1.1, back:false, books:true, finish:{type:'wood', i:0}, spin:false, bbH:4.5, bbD:0.75, wall:true };
-  const cubbyDepth = () => Math.min(15.5, DEPTH - state.bbD - 0.3);
+  const notchH = () => state.bbH + CLEAR, notchD = () => state.bbD + CLEAR;
+  const cubbyDepth = () => DEPTH - notchD() - PLY;     // cubby back sits flush with the cutaway
+  const scallopDepth = () => Math.min(state.depth, (IW/state.count)/2);
+  // pocket floor behind board i: front edge butts board i's back face, runs under all of board i+1
+  const shelf = i => { const y = bottoms[i+1], front = zAt(i, y) + T / Math.cos(LEAN); return {y, front, depth: zAt(i+1, y) + T / Math.cos(LEAN) - front}; };
   const openW = (IW - 2*T) / 3;               // cubby opening width
   const innerH = HB - T - (FOOT + T);         // cubby opening height
   // horizontal gap at the floor of pocket p, between board p's back face and board p+1's front face
@@ -274,21 +318,22 @@ input[type=range]{width:100%; accent-color:var(--accent)}
   }
   const extrude = (shape) => new THREE.ExtrudeGeometry(shape, {depth:T, bevelEnabled:true, bevelThickness:0.06, bevelSize:0.06, bevelSegments:2, curveSegments:24});
 
+  const footEndZ = () => Math.min(14.1, DEPTH - notchD() - 1.25);   // back end of the foot arch
   function sideShape(){
     // u = depth (back is +), v = height
     const s = new THREE.Shape();
     s.moveTo(0, 0);
     s.lineTo(2.25, 0);
-    s.lineTo(2.25, 0.6);
-    s.quadraticCurveTo(2.25, 1.6, 3.4, 1.6);       // arched foot cut-out
-    const notchZ = DEPTH - state.bbD;                  // baseboard cutaway at the lower back
-    const footEnd = Math.min(14.1, notchZ - 1.25);
-    s.lineTo(footEnd - 1.1, 1.6);
-    s.quadraticCurveTo(footEnd, 1.6, footEnd, 0.6);
+    s.lineTo(2.25, 0.25);
+    s.quadraticCurveTo(2.25, ARCH, 3.25, ARCH);     // arched foot cut-out
+    const notchZ = DEPTH - notchD();                   // baseboard cutaway at the lower back
+    const footEnd = footEndZ();
+    s.lineTo(footEnd - 1, ARCH);
+    s.quadraticCurveTo(footEnd, ARCH, footEnd, 0.25);
     s.lineTo(footEnd, 0);
     s.lineTo(notchZ, 0);
-    s.lineTo(notchZ, state.bbH);
-    s.lineTo(DEPTH, state.bbH);
+    s.lineTo(notchZ, notchH());
+    s.lineTo(DEPTH, notchH());
     s.lineTo(DEPTH, OH);                               // vertical back edge, flush to the wall
     const zf = TOPZ;
     s.lineTo(zf + 0.6, OH);
@@ -311,7 +356,7 @@ input[type=range]{width:100%; accent-color:var(--accent)}
     }
     model = new THREE.Group();
     const add = (mesh) => { mesh.castShadow = mesh.receiveShadow = true; model.add(mesh); return mesh; };
-    const d = Math.min(state.depth, (IW/state.count)/2);
+    const d = scallopDepth();
 
     // sides
     [-1, 1].forEach(side => {
@@ -326,7 +371,7 @@ input[type=range]{width:100%; accent-color:var(--accent)}
     box(IW, T, CD, 0, FOOT + T/2, -CD/2);
     box(IW, T, CD, 0, HB - T/2, -CD/2);
     [-1, 1].forEach(sx => box(T, innerH, CD - 0.1, sx * (openW/2 + T/2), FOOT + T + innerH/2, -(CD/2 + 0.05)));
-    box(IW, HB - FOOT, 0.25, 0, FOOT + (HB - FOOT)/2, -(CD + 0.125));
+    box(IW, HB - FOOT, PLY, 0, FOOT + (HB - FOOT)/2, -(CD + PLY/2));
 
     // tier boards + back panel
     for (let i = 0; i < NB; i++){
@@ -343,12 +388,9 @@ input[type=range]{width:100%; accent-color:var(--accent)}
 
     // shelves (pocket floors)
     for (let i = 1; i < NB - 1; i++){        // pocket 0 sits on the cubby top
-      const ys = bottoms[i+1];
-      const zFront = zAt(i, ys) + T / Math.cos(LEAN);
-      const zBack = zAt(i+1, ys);
-      const depth = Math.max(0.5, zBack - zFront + 0.4);
-      const m = add(new THREE.Mesh(new THREE.BoxGeometry(IW, T, depth), woodBoxMat));
-      m.position.set(0, ys - T/2, -(zFront - 0.2 + depth/2));
+      const s = shelf(i);
+      const m = add(new THREE.Mesh(new THREE.BoxGeometry(IW, T, s.depth), woodBoxMat));
+      m.position.set(0, s.y - T/2, -(s.front + s.depth/2));
     }
 
     // books for scale (plain, untitled covers)
@@ -400,14 +442,105 @@ input[type=range]{width:100%; accent-color:var(--accent)}
       const trim = new THREE.Mesh(new THREE.BoxGeometry(140, state.bbH, state.bbD), new THREE.MeshStandardMaterial({color:'#F7F5F0', roughness:0.55}));
       trim.position.set(0, state.bbH/2, -DEPTH + state.bbD/2 - 0.01);
       trim.castShadow = trim.receiveShadow = true;
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(140, 0.35, state.bbD + 0.15), trim.material);
-      cap.position.set(0, state.bbH - 0.175, -DEPTH + (state.bbD + 0.15)/2 - 0.01);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(140, 0.35, state.bbD + 0.1), trim.material);
+      cap.position.set(0, state.bbH - 0.175, -DEPTH + (state.bbD + 0.1)/2 - 0.01);
       model.add(trim, cap);
     }
 
     scene.add(model);
     document.getElementById('spanV').textContent = (IW/state.count).toFixed(2) + ' in';
-    document.getElementById('cutV').textContent = inch(state.bbH).replace(' in', '') + ' × ' + inch(state.bbD);
+    document.getElementById('cutV').textContent = inch(notchH()).replace(' in', '') + ' × ' + inch(notchD());
+    renderCutList();
+  }
+
+  // ---- parts & cut list (all sizes from the same geometry the model is built from) ----
+  function frac(v){   // nearest 1/16 in, e.g. "6 1/16", "12⅛"
+    let n = Math.round(v * 16), whole = Math.floor(n / 16), r = n % 16, den = 16;
+    if (!r) return String(whole);
+    while (r % 2 === 0){ r /= 2; den /= 2; }
+    const glyph = {'1/8':'⅛', '1/4':'¼', '3/8':'⅜', '1/2':'½', '5/8':'⅝', '3/4':'¾', '7/8':'⅞'}[r + '/' + den];
+    return glyph ? (whole || '') + glyph : (whole ? whole + ' ' : '') + r + '/' + den;
+  }
+  const range = (a, b) => frac(a) + ' → ' + frac(b);
+  function cutList(){
+    const c = Math.cos(LEAN), L = IW + 2*DADO, CD = cubbyDepth(), d = scallopDepth(), span = IW / state.count;
+    const deg = LEAN_DEG;
+    const names = ['Tier 1 (front)', 'Tier 2', 'Tier 3', 'Back panel'];
+    const scalloped = i => i < NB - 1 || state.back;
+    const parts = [
+      {id:'A', name:'Side', qty:2, t:T, w:DEPTH, l:OH, note:'Grain vertical. Mirror pair: dadoes on the inside faces'},
+      {id:'B', name:'Cubby floor', qty:1, t:T, w:CD, l:L, note:'Divider dadoes in the top face'},
+      {id:'C', name:'Cubby top', qty:1, t:T, w:CD, l:L, note:'Divider dadoes in the bottom face. Round the front corners to the side curve'},
+      {id:'D', name:'Divider', qty:2, t:T, w:CD, l:innerH + 2*DADO, note:'Grain vertical'},
+      {id:'E', name:'Cubby back', qty:1, t:PLY, w:HB - FOOT, l:IW, ply:true, note:'Plywood. Glue and brad to B, C and D'}
+    ];
+    tops.forEach((top, i) => parts.push({id:'FGHJ'[i], name:names[i], qty:1, t:T, w:(top - bottoms[i]) / c, l:L,
+      note:(scalloped(i) ? state.count + ' scallops, each ' + frac(span) + ' wide × ' + frac(d) + ' tall' : 'Straight top') + '. Bottom edge beveled ' + deg + '°'}));
+    [1, 2].forEach((i, k) => parts.push({id:'KL'[k], name:'Shelf ' + (k + 1), qty:1, t:T, w:shelf(i).depth, l:L,
+      note:'Floor under ' + names[i + 1] + '. Front edge beveled ' + deg + '°'}));
+    parts.forEach(p => {   // rough stock: +1 in long, +½ in wide, glued up from boards no wider than 7¼ in
+      if (p.ply) return;
+      p.rw = p.w + 0.5; p.rl = p.l + 1; p.boards = Math.ceil(p.rw / 7.25);
+      p.bf = p.qty * p.rw * p.rl / 144;   // 4/4 rough stock
+    });
+
+    // dadoes, laid out on the rectangular 16 × 32 side blank from its bottom and front edges
+    const dadoes = [
+      {part:'B', what:'Cubby floor', h:range(FOOT, FOOT + T), z:range(0, CD), note:'Runs out the front edge'},
+      {part:'C', what:'Cubby top', h:range(HB - T, HB), z:range(0, CD), note:'Runs out the front edge'},
+      ...[1, 2].map((i, k) => { const s = shelf(i); return {part:'KL'[k], what:'Shelf ' + (k + 1), h:range(s.y - T, s.y), z:range(s.front, s.front + s.depth), note:''}; }),
+      ...tops.map((top, i) => {
+        const stop = scalloped(i) ? top - d * c : top;
+        return {part:'FGHJ'[i], what:names[i], h:range(bottoms[i], stop), z:range(zAt(i, bottoms[i]), zAt(i, stop)),
+          note:'Front face line, leaning ' + deg + '° back. Dado runs behind it. Stopped' + (scalloped(i) ? ' at the scallop valleys' : ' at the top')};
+      })
+    ];
+    const dividers = [0, 1].map(j => range(DADO + openW + j * (openW + T), DADO + openW + j * (openW + T) + T));
+    const fe = footEndZ(), nz = DEPTH - notchD();
+    const profile = [
+      ['Front foot', range(0, 2.25), 'On the floor'],
+      ['Foot arch', range(2.25, fe), frac(ARCH) + ' in tall, 1 in corner curves'],
+      ['Rear foot', range(fe, nz), 'On the floor'],
+      ['Baseboard cutaway', range(nz, DEPTH), frac(notchH()) + ' tall (trim ' + frac(state.bbH) + ' × ' + frac(state.bbD) + ' + ' + frac(CLEAR) + ' clearance)'],
+      ['Back edge', frac(DEPTH), range(notchH(), OH) + ' high, square to the floor'],
+      ['Top', range(TOPZ + 0.6, DEPTH), frac(OH) + ' high, flat'],
+      ['Front slope', range(0.35, TOPZ - 0.25), 'Straight from ' + frac(HB + 0.5) + ' up to ' + frac(OH - 0.6) + ' high, eased at both ends'],
+      ['Front of base', '0', range(0, HB - 0.6) + ' high, vertical']
+    ];
+    return {parts, dadoes, dividers, profile};
+  }
+
+  const esc = s => String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'})[ch]);
+  const table = (head, rows) => '<div class="tw"><table><thead><tr>' + head.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' +
+    rows.map(r => '<tr>' + r.map(v => '<td>' + esc(v) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
+  function renderCutList(){
+    const {parts, dadoes, dividers, profile} = cutList();
+    const wood = state.finish.type === 'wood' ? WOODS[state.finish.i].name : 'paint-grade poplar or maple';
+    const bf = parts.reduce((a, p) => a + (p.bf || 0), 0);
+    const e = parts.find(p => p.ply);
+    $('cutMeta').textContent = state.count + ' scallops · ' + frac(scallopDepth()) + ' in deep · back panel ' + (state.back ? 'scalloped' : 'straight') +
+      ' · ' + $('finishName').textContent + ' · baseboard ' + frac(state.bbH) + ' × ' + frac(state.bbD) + ' in';
+    $('cutBody').innerHTML =
+      '<h3>Parts list</h3>' +
+      table(['Part', 'Name', 'Qty', 'T', 'W', 'L (grain)', 'Notes'], parts.map(p => [p.id, p.name, p.qty, frac(p.t), frac(p.w), frac(p.l), p.note])) +
+      '<p class="fine">Finished sizes in inches, rounded to 1/16. L runs with the grain. B, C and F–L are ' + frac(IW + 2*DADO) +
+      ' long: ' + frac(IW) + ' between the sides plus a ' + frac(DADO) + ' tongue at each end. Tier widths are measured along the face, from the long point of the bevel to the scallop tips.</p>' +
+      '<h3>Cut list</h3>' +
+      table(['Part', 'Qty', 'Rough W × L', 'Boards per panel', 'Board feet'], parts.filter(p => !p.ply).map(p => [p.id + ' ' + p.name, p.qty, frac(p.rw) + ' × ' + frac(p.rl), p.boards, p.bf.toFixed(1)])) +
+      '<p class="fine">Stock: ' + esc(wood) + ', 4/4 rough, milled to ' + frac(T) + ' in. Parts need ' + bf.toFixed(1) + ' bd ft. Buy about ' +
+      Math.ceil(bf * 1.3) + ' bd ft to cover defects and offcuts. Plywood: one ' + frac(PLY) + ' in piece at least ' + frac(e.w + 0.5) + ' × ' + frac(e.l + 0.5) + ' in (cut E to ' + frac(e.w) + ' × ' + frac(e.l) + ').</p>' +
+      '<h3>Side dadoes</h3>' +
+      table(['Part', 'For', 'Height (in)', 'From front (in)', 'Notes'], dadoes.map(x => [x.part, x.what, x.h, x.z, x.note])) +
+      '<p class="fine">All dadoes are ' + frac(DADO) + ' deep and as wide as your stock. Lay them out on the inside faces before you cut the profile, measuring from the blank\'s bottom and front edges. Divider dadoes in B (top face) and C (bottom face), measured from the left end: ' + dividers.join(' and ') + '.</p>' +
+      '<h3>Side profile</h3>' +
+      table(['Feature', 'From front (in)', 'Height / notes'], profile);
+  }
+  function cutCSV(){
+    const {parts} = cutList();
+    const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+    return [['Part', 'Name', 'Qty', 'T (in)', 'W (in)', 'L (in)', 'Rough W (in)', 'Rough L (in)', 'Board feet', 'Notes']]
+      .concat(parts.map(p => [p.id, p.name, p.qty, p.t.toFixed(3), p.w.toFixed(3), p.l.toFixed(3), p.rw ? p.rw.toFixed(3) : '', p.rl ? p.rl.toFixed(3) : '', p.bf ? p.bf.toFixed(2) : '', p.note]))
+      .map(r => r.map(q).join(',')).join('\n');
   }
 
   // ---- camera presets ----
@@ -448,6 +581,7 @@ input[type=range]{width:100%; accent-color:var(--accent)}
     state.finish = finish; applyFinish();
     allSw.forEach(x => x.setAttribute('aria-pressed', String(x === btn)));
     $('finishName').textContent = name;
+    renderCutList();
   }
   function swatch(parent, color, name, finish, before){
     const b = document.createElement('button');
@@ -471,6 +605,16 @@ input[type=range]{width:100%; accent-color:var(--accent)}
   $('bbH').addEventListener('input', e => { state.bbH = +e.target.value; $('bbHV').textContent = inch(state.bbH); build(); });
   $('bbD').addEventListener('input', e => { state.bbD = +e.target.value; $('bbDV').textContent = inch(state.bbD); build(); });
   $('wall').addEventListener('change', e => { state.wall = e.target.checked; build(); });
+  $('cutOpen').addEventListener('click', () => $('cut').showModal());
+  $('cutClose').addEventListener('click', () => $('cut').close());
+  $('cutPrint').addEventListener('click', () => print());
+  $('cutCsv').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([cutCSV()], {type:'text/csv'}));
+    a.download = 'bookshelf-cut-list.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
 
   // ---- loop ----
   function resize(){
