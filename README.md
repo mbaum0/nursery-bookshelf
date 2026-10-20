@@ -25,3 +25,4 @@ Controls in the model:
 | Baseboard cutaway | 4½ H × ¾ D in (default) |
 
 Overall size was estimated from a photo of the original walnut piece. Measure the real piece and your baseboard (including any cap moulding) before cutting, and add about ⅛ in clearance to the cutaway.
+# nursery-bookshelf
