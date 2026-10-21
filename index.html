@@ -677,6 +677,20 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     packCache = {key, result:best.sheets};
     return best.sheets;
   }
+  function sideSheetMarks(X, Y){
+    // the side's layout points and cut-outs, measured from the blank's edges (height runs along X, depth along Y)
+    const o = sideOutline(), fs = 0.85, nh = notchH(), nz = o.nz, fe = o.fe;
+    return dim(X, Y, X + HB, Y, 0.9, frac(HB) + ' to Q', fs) +
+      dim(X + OH, Y, X + OH, Y + TOPZ, 0.9, frac(TOPZ) + ' to P', fs) +
+      '<circle cx="' + f2(X + HB) + '" cy="' + f2(Y) + '" r="0.35" class="pn"/><circle cx="' + f2(X + OH) + '" cy="' + f2(Y + TOPZ) + '" r="0.35" class="pn"/>' +
+      note(X + HB + 1.2, Y + 2.6, 'Cut Q → P straight: ' + SLOPE_DEG + '° off the front edge', fs) +
+      leader(X + ARCH + 0.1, Y + (FRONT_FOOT + fe) / 2, X + 5, Y + (FRONT_FOOT + fe) / 2) +
+      note(X + 5.2, Y + (FRONT_FOOT + fe) / 2 - 0.4, 'Arch: ' + frac(ARCH) + ' deep, from ' + frac(FRONT_FOOT) + ' to ' + frac(fe) + ' off the front edge,', fs) +
+      note(X + 5.2, Y + (FRONT_FOOT + fe) / 2 + 0.7, frac(ARCH) + ' radius corners', fs) +
+      leader(X + nh / 2, Y + nz + (DEPTH - nz) / 2, X + 6.5, Y + nz - 1.6) +
+      note(X + 6.7, Y + nz - 1.7, 'Cutaway: ' + frac(nh) + ' long × ' + frac(DEPTH - nz) + ' deep, at the bottom back corner', fs) +
+      note(X + HB + 1.2, Y + 3.8, 'Round P with R' + frac(R_TOP) + ' and Q with R' + frac(R_BASE) + '. Full drawing: A in Shop drawings', fs * 0.9);
+  }
   function sheetSVG(sheet, n, total){
     // drawn landscape: the sheet's 96 in length (and face grain) runs left to right; a part's length runs along X
     const d = scallopDepth(), shapes = {A:sideShape().getPoints(16)};
@@ -689,10 +703,11 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
         : [[X, Y], [X + W, Y], [X + W, Y + H], [X, Y + H]];   // plain rectangles are finished once they're sawn free
       const shape = '<polygon points="' + pts.map(q => q[0].toFixed(2) + ',' + q[1].toFixed(2)).join(' ') + '" class="pshape"/>';
       const bevel = 'FGHJKL'.includes(p.id) ? '<line x1="' + X + '" y1="' + (Y + 0.25) + '" x2="' + (X + W) + '" y2="' + (Y + 0.25) + '" class="pbev"/>' : '';
+      const marks = p.id === 'A' ? sideSheetMarks(X, Y) : '';
       const label = H >= 5
         ? '<text x="' + cx + '" y="' + (cy - 0.4) + '" class="pl">' + p.id + '</text><text x="' + cx + '" y="' + (cy + 1.9) + '" class="pd">' + dims + '</text>'
         : '<text x="' + cx + '" y="' + (cy + 0.5) + '" class="pd">' + p.id + '  ' + dims + '</text>';
-      return '<rect x="' + X + '" y="' + Y + '" width="' + W + '" height="' + H + '" class="pc"><title>' + p.id + ' ' + dims + '</title></rect>' + shape + bevel + label;
+      return '<rect x="' + X + '" y="' + Y + '" width="' + W + '" height="' + H + '" class="pc"><title>' + p.id + ' ' + dims + '</title></rect>' + shape + bevel + marks + label;
     }).join('');
     const cuts = sheet.cuts.map((c, k) => {
       const X1 = c.y1, Y1 = c.x1, X2 = c.y2, Y2 = c.x2, mx = (X1 + X2) / 2, my = (Y1 + Y2) / 2;
