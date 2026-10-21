@@ -237,26 +237,32 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   const LEAN_DEG = 5;          // lean of each tier board back from vertical (a whole 5° for easy saw setups)
   const LEAN = LEAN_DEG * Math.PI / 180;
   const K = Math.tan(LEAN);
-  const NB = 4;                              // 3 tiers + back panel
-  // Each tier is a low lip so the covers show: it rises LIP above the floor of the pocket it fronts. The three pocket
-  // floors are spaced evenly so every board behind a pocket (G, H and the back panel J) is the same height.
+  const POCKETS = 4;                         // display pockets, one tier in front of each
+  const NB = POCKETS + 1;                    // boards: the tiers plus the back panel
+  // part letters: the boards from F, then the shelves, skipping I and O
+  const BOARD_IDS = 'FGHJKLMNPQRS'.slice(0, NB).split(''), SHELF_IDS = 'FGHJKLMNPQRS'.slice(NB, NB + POCKETS - 1).split('');
+  const SHELVES = SHELF_IDS.map((_, k) => k + 1);   // shelf k sits behind board k+1 and carries board k+2
+  const boardName = i => i === NB - 1 ? 'Back panel' : 'Tier ' + (i + 1) + (i ? '' : ' (front)');
+  // Each tier is a low lip so the covers show: it rises LIP above the floor of the pocket it fronts. The pocket
+  // floors are spaced evenly so every board behind a pocket (all but the front tier) is the same height.
   const LIP = 2;
   const TOP_GAP = 0.4;                                     // back panel's top sits this far below the sides' top
-  const PITCH = (OH - TOP_GAP - HB - LIP) / 3;            // floor to floor
-  const floors = [0, 1, 2].map(k => HB + k * PITCH);      // pocket floors: cubby top, then shelves K and L
+  const PITCH = (OH - TOP_GAP - HB - LIP) / POCKETS;      // floor to floor
+  const floors = Array.from({length:POCKETS}, (_, k) => HB + k * PITCH);   // pocket floors: cubby top, then the shelves
   const tops = [...floors.map(f => f + LIP), OH - TOP_GAP];
   const bottoms = [HB, ...floors];
 
   // Every pocket is the same depth (POCKET): the front tier's top sits on the sides' sloped front edge, and each
   // board behind stands POCKET behind the back face of the one in front, measured at its pocket floor.
-  // POCKET is the smallest 1/8 in that keeps every board's top behind that sloped edge.
+  // POCKET is the smallest 1/8 in, at least POCKET_MIN, that keeps every board's top behind that sloped edge.
   const BACK = T / Math.cos(LEAN);           // board thickness measured level
   const faceAt = P => {                      // z of each board's front face at its bottom edge, for pocket depth P
     const zb = [S * (tops[0] - HB) - K * (tops[0] - bottoms[0])];
     for (let i = 1; i < NB; i++) zb.push(zb[i-1] + K * (bottoms[i] - bottoms[i-1]) + BACK + P);
     return zb;
   };
-  const POCKET = Math.ceil(8 * Math.max(0, ...tops.map((top, i) => {
+  const POCKET_MIN = 3;                     // never shallower than this, however close the tiers are
+  const POCKET = Math.ceil(8 * Math.max(POCKET_MIN, ...tops.map((top, i) => {
     if (!i) return 0;
     const z0 = faceAt(0)[i] + K * (top - bottoms[i]);   // top of board i with no pocket; it moves back i·P per inch of P
     return (S * (top - HB) - z0) / i;
@@ -472,7 +478,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       m.position.set(-IW/2 + 0.08, y, z);   // just proud of the side's face, which its 0.06 in edge bevel pushes inward
       model.add(m);
     };
-    [[FOOT + T, 0, CD], [HB, 0, CD], ...[1, 2].map(i => { const s = shelf(i); return [s.y, s.front, s.front + s.depth]; })]
+    [[FOOT + T, 0, CD], [HB, 0, CD], ...SHELVES.map(i => { const s = shelf(i); return [s.y, s.front, s.front + s.depth]; })]
       .forEach(([yTop, a, b]) => mark(new THREE.BoxGeometry(0.04, T, b - a), yTop - T/2, -(a + b)/2));
     tops.forEach((top, i) => {
       const len = (top - bottoms[i]) / Math.cos(LEAN);
@@ -495,7 +501,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       const n = isBack && !state.back ? 0 : state.count;
       const geo = extrude(tierShape(IW, len, n, d));
       geo.translate(-IW/2, 0, -T);              // face plane at z=0, thickness behind
-      const m = add(new THREE.Mesh(geo, woodMat), 'FGHJ'[i]);
+      const m = add(new THREE.Mesh(geo, woodMat), BOARD_IDS[i]);
       m.rotation.x = -LEAN;
       m.position.set(0, yb, -zAt(i, yb));
     }
@@ -503,7 +509,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     // shelves (pocket floors)
     for (let i = 1; i < NB - 1; i++){        // pocket 0 sits on the cubby top
       const s = shelf(i);
-      const m = add(new THREE.Mesh(new THREE.BoxGeometry(IW, T, s.depth), woodBoxMat), 'KL'[i - 1]);
+      const m = add(new THREE.Mesh(new THREE.BoxGeometry(IW, T, s.depth), woodBoxMat), SHELF_IDS[i - 1]);
       m.position.set(0, s.y - T/2, -(s.front + s.depth/2));
     }
 
@@ -579,7 +585,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   function cutList(){
     const c = Math.cos(LEAN), L = IW, CD = cubbyDepth(), d = scallopDepth(), span = IW / state.count;   // parts butt between the sides
     const deg = LEAN_DEG;
-    const names = ['Tier 1 (front)', 'Tier 2', 'Tier 3', 'Back panel'];
+    const names = tops.map((_, i) => boardName(i));
     const scalloped = i => i < NB - 1 || state.back;
     const parts = [
       {id:'A', name:'Side', qty:2, t:T, w:DEPTH, l:OH, ang:'Front edge ' + SLOPE_DEG + '° from vertical. Tier layout lines ' + deg + '° from vertical', note:'Grain vertical. Mirror pair: layout lines on the inside faces'},
@@ -588,9 +594,9 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       {id:'D', name:'Divider', qty:2, t:T, w:CD, l:innerH, ang:'Square', note:'Grain vertical. Screwed through B and C'},
       {id:'E', name:'Cubby back', qty:1, t:PLY, w:HB - FOOT, l:IW, ply:true, ang:'Square', note:'Plywood. Glue and brad to B, C and D'}
     ];
-    tops.forEach((top, i) => parts.push({id:'FGHJ'[i], name:names[i], qty:1, t:T, w:(top - bottoms[i]) / c, l:L, ang:'Bottom edge ' + deg + '° bevel',
+    tops.forEach((top, i) => parts.push({id:BOARD_IDS[i], name:names[i], qty:1, t:T, w:(top - bottoms[i]) / c, l:L, ang:'Bottom edge ' + deg + '° bevel',
       note:(scalloped(i) ? state.count + ' scallops, each ' + frac(span) + ' wide × ' + frac(d) + ' tall' : 'Straight top') + '. Bottom edge beveled ' + deg + '°'}));
-    [1, 2].forEach((i, k) => parts.push({id:'KL'[k], name:'Shelf ' + (k + 1), qty:1, t:T, w:shelf(i).depth, l:L, ang:'Front edge ' + deg + '° bevel',
+    SHELVES.forEach((i, k) => parts.push({id:SHELF_IDS[k], name:'Shelf ' + (k + 1), qty:1, t:T, w:shelf(i).depth, l:L, ang:'Front edge ' + deg + '° bevel',
       note:'Floor under ' + names[i + 1] + '. Front edge beveled ' + deg + '°'}));
     parts.forEach(p => {   // rough stock: +1 in long, +½ in wide, glued up from boards no wider than 7¼ in
       if (p.ply) return;
@@ -602,20 +608,20 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     const lines = [
       {part:'B', what:'Cubby floor', h:range(FOOT, FOOT + T), z:range(0, CD), note:'Bottom face on the lower line, front flush with the front edge'},
       {part:'C', what:'Cubby top', h:range(HB - T, HB), z:range(0, CD), note:'Top face on the upper line, front flush with the front edge'},
-      ...[1, 2].map((i, k) => { const s = shelf(i); return {part:'KL'[k], what:'Shelf ' + (k + 1), h:range(s.y - T, s.y), z:range(s.front, s.front + s.depth), note:'Top face on the upper line'}; }),
-      ...tops.map((top, i) => ({part:'FGHJ'[i], what:names[i], h:range(bottoms[i], top), z:range(zAt(i, bottoms[i]), zTop(i)),
+      ...SHELVES.map((i, k) => { const s = shelf(i); return {part:SHELF_IDS[k], what:'Shelf ' + (k + 1), h:range(s.y - T, s.y), z:range(s.front, s.front + s.depth), note:'Top face on the upper line'}; }),
+      ...tops.map((top, i) => ({part:BOARD_IDS[i], what:names[i], h:range(bottoms[i], top), z:range(zAt(i, bottoms[i]), zTop(i)),
         note:'Front face line, leaning ' + deg + '° back. The board sits behind it'}))
     ];
     const dividers = [0, 1].map(j => range(openW + j * (openW + T), openW + j * (openW + T) + T));
 
     // pocket holes: every part screws to the sides from a face you won't see; tiers also screw down into the floor below
     const per = w => w < 4 ? 1 : w < 10 ? 2 : 3;
-    const floorUnder = ['C', 'C', 'K', 'L'];
+    const floorUnder = BOARD_IDS.map((_, i) => i < 2 ? 'C' : SHELF_IDS[i - 2]);   // the first two boards stand on the cubby top
     const holes = [
       ...['B', 'C'].map(id => ({part:id, face:'Bottom face, ' + per(CD) + ' at each end', n:2 * per(CD), into:'Sides'})),
-      ...tops.map((top, i) => ({part:'FGHJ'[i], face:'Back face, ' + per(parts[5 + i].w) + ' at each end', n:2 * per(parts[5 + i].w), into:'Sides'})),
-      ...tops.map((top, i) => ({part:'FGHJ'[i], face:'Back face, along the bottom edge', n:Math.ceil(IW / 10), into:floorUnder[i]})),
-      ...[1, 2].map((i, k) => ({part:'KL'[k], face:'Bottom face, ' + per(shelf(i).depth) + ' at each end', n:2 * per(shelf(i).depth), into:'Sides'}))
+      ...tops.map((top, i) => ({part:BOARD_IDS[i], face:'Back face, ' + per(parts[5 + i].w) + ' at each end', n:2 * per(parts[5 + i].w), into:'Sides'})),
+      ...tops.map((top, i) => ({part:BOARD_IDS[i], face:'Back face, along the bottom edge', n:Math.ceil(IW / 10), into:floorUnder[i]})),
+      ...SHELVES.map((i, k) => ({part:SHELF_IDS[k], face:'Bottom face, ' + per(shelf(i).depth) + ' at each end', n:2 * per(shelf(i).depth), into:'Sides'}))
     ];
     return {parts, lines, dividers, holes};
   }
@@ -713,7 +719,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   function sheetSVG(sheet, n, total){
     // drawn landscape: the sheet's 96 in length (and face grain) runs left to right; a part's length runs along X
     const d = scallopDepth(), shapes = {A:sideShape().getPoints(16)};
-    tops.forEach((top, i) => { shapes['FGHJ'[i]] = tierShape(IW, (top - bottoms[i]) / Math.cos(LEAN), i < NB - 1 || state.back ? state.count : 0, d).getPoints(8); });
+    tops.forEach((top, i) => { shapes[BOARD_IDS[i]] = tierShape(IW, (top - bottoms[i]) / Math.cos(LEAN), i < NB - 1 || state.back ? state.count : 0, d).getPoints(8); });
     const parts = sheet.parts.map(p => {
       const X = p.y, Y = p.x, W = p.l, H = p.w, cx = X + W/2, cy = Y + H/2;
       const dims = frac(p.w) + ' × ' + frac(p.l);
@@ -721,7 +727,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       const pts = p.id === 'A' ? shapes.A.map(q => [X + q.y, Y + q.x]) : shapes[p.id] ? shapes[p.id].map(q => [X + q.x, Y + q.y])
         : [[X, Y], [X + W, Y], [X + W, Y + H], [X, Y + H]];   // plain rectangles are finished once they're sawn free
       const shape = '<polygon points="' + pts.map(q => q[0].toFixed(2) + ',' + q[1].toFixed(2)).join(' ') + '" class="pshape"/>';
-      const bevel = 'FGHJKL'.includes(p.id) ? '<line x1="' + X + '" y1="' + (Y + 0.25) + '" x2="' + (X + W) + '" y2="' + (Y + 0.25) + '" class="pbev"/>' : '';
+      const bevel = BOARD_IDS.includes(p.id) || SHELF_IDS.includes(p.id) ? '<line x1="' + X + '" y1="' + (Y + 0.25) + '" x2="' + (X + W) + '" y2="' + (Y + 0.25) + '" class="pbev"/>' : '';
       const marks = p.id === 'A' ? sideSheetMarks(X, Y) : '';
       const label = H >= 5
         ? '<text x="' + cx + '" y="' + (cy - 0.4) + '" class="pl">' + p.id + '</text><text x="' + cx + '" y="' + (cy + 1.9) + '" class="pd">' + dims + '</text>'
@@ -834,11 +840,10 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     const tierBevel = LEAN_DEG + '° bevel on this edge, long point on the front face';
     return sideDrawing() +
       '<div class="shop-grid">' +
-      ['F', 'G', 'H', 'J'].map((id, i) => boardDrawing(by(id), {n:i < NB - 1 || state.back ? state.count : 0, d, bevel:tierBevel, sub:'grain along the length', cls:'wide'})).join('') +
+      BOARD_IDS.map((id, i) => boardDrawing(by(id), {n:i < NB - 1 || state.back ? state.count : 0, d, bevel:tierBevel, sub:'grain along the length', cls:'wide'})).join('') +
       boardDrawing(by('B'), {sub:'grain along the length · front edge at the bottom', marks:divMarks, cls:'wide'}) +
       boardDrawing(by('C'), {sub:'grain along the length · front edge at the bottom', marks:divMarks, cls:'wide'}) +
-      boardDrawing(by('K'), {bevel:LEAN_DEG + '° bevel on the front edge', sub:'grain along the length', cls:'wide'}) +
-      boardDrawing(by('L'), {bevel:LEAN_DEG + '° bevel on the front edge', sub:'grain along the length', cls:'wide'}) +
+      SHELF_IDS.map(id => boardDrawing(by(id), {bevel:LEAN_DEG + '° bevel on the front edge', sub:'grain along the length', cls:'wide'})).join('') +
       boardDrawing(by('E'), {sub:'plywood', cls:'wide'}) +
       boardDrawing(Object.assign({}, by('D'), {l:by('D').w, w:by('D').l}), {sub:'grain vertical · height up, depth across'}) +
       '</div>';
@@ -870,11 +875,11 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       text:id + '  ' + frac(yTop - T) + '–' + frac(yTop) + ' up, ' + frac(a) + '–' + frac(b) + ' back'});
     flat('B', 0, CD, FOOT + T);
     flat('C', 0, CD, HB);
-    [1, 2].forEach((i, k) => { const sh = shelf(i); flat('KL'[k], sh.front, sh.front + sh.depth, sh.y); });
+    SHELVES.forEach((i, k) => { const sh = shelf(i); flat(SHELF_IDS[k], sh.front, sh.front + sh.depth, sh.y); });
     tops.forEach((top, i) => {
       const stop = top, z0 = zAt(i, bottoms[i]), z1 = zAt(i, stop);
-      items.push({id:'FGHJ'[i], poly:[[z0, bottoms[i]], [z1, stop], [z1 + back, stop], [z0 + back, bottoms[i]]], at:[z1 + back, stop - 0.4],
-        text:'FGHJ'[i] + '  ' + frac(z0) + ' back at ' + frac(bottoms[i]) + ' up, ' + LEAN_DEG + '° to ' + frac(stop)});
+      items.push({id:BOARD_IDS[i], poly:[[z0, bottoms[i]], [z1, stop], [z1 + back, stop], [z0 + back, bottoms[i]]], at:[z1 + back, stop - 0.4],
+        text:BOARD_IDS[i] + '  ' + frac(z0) + ' back at ' + frac(bottoms[i]) + ' up, ' + LEAN_DEG + '° to ' + frac(stop)});
     });
     // labels down the right margin, nudged apart so they never overlap
     const LX = DEPTH + 2, GAP = 1.15;
@@ -919,9 +924,9 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     {add:['A1', 'marks'], cam:'inside', text:'Draw the layout lines on both sides, using the drawings above, and drill every pocket hole. The left side is shown; the right side is its mirror image.'},
     {add:['B', 'C', 'D'], text:'Screw the dividers (D) between the cubby floor (B) and cubby top (C), through B and C. Check that each opening is square.'},
     {add:['A1'], text:'Stand the left side (A) up and glue and pocket-screw the cubby box to it on its lines.'},
-    {add:['F', 'G'], text:'Add tiers F and G on their lines, standing on C. Glue and screw them to the side and down into C.'},
-    {add:['K', 'H'], text:'Glue and screw shelf K on its lines, then tier H on top of it.'},
-    {add:['L', 'J'], text:'Glue and screw shelf L on its lines, then the back panel (J) on top of it.'},
+    {add:BOARD_IDS.slice(0, 2), text:'Add tiers ' + BOARD_IDS[0] + ' and ' + BOARD_IDS[1] + ' on their lines, standing on C. Glue and screw them to the side and down into C.'},
+    ...SHELF_IDS.map((id, k) => ({add:[id, BOARD_IDS[k + 2]], text:'Glue and screw shelf ' + id + ' on its lines, then ' +
+      (k + 2 === NB - 1 ? 'the back panel (' + BOARD_IDS[k + 2] + ')' : 'tier ' + BOARD_IDS[k + 2]) + ' on top of it.'})),
     {add:['A2'], text:'Set the right side (A) on, clamp it to its lines, and drive the pocket screws at the right-hand ends. Check that the diagonals match.'},
     {add:['E'], cam:'back', text:'From the back, glue and brad the cubby back (E) to B, C and D. It squares the cubby box.'}
   ];
@@ -1119,12 +1124,12 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   }
 
   // fixed spec values, derived from the dimensions above
-  const pockets = [0, 1, 2].map(pocketDepth);   // all equal to POCKET; kept as a check on the geometry
+  const pockets = floors.map((_, p) => pocketDepth(p));   // all equal to POCKET; kept as a check on the geometry
   $('overallV').textContent = OW + ' × ' + frac(DEPTH) + ' × ' + OH + ' in';
   $('stockV').textContent = inch(T) + ' solid';
   $('tiersV').textContent = (NB - 1) + ' + back';
   $('cubbyV').textContent = inch(openW).replace(' in', '') + ' × ' + inch(innerH);
-  $('pocketV').textContent = Math.max(...pockets) - Math.min(...pockets) < 0.01 ? frac(POCKET) + ' in, all three'
+  $('pocketV').textContent = Math.max(...pockets) - Math.min(...pockets) < 0.01 ? frac(POCKET) + ' in, all ' + POCKETS
     : '≈ ' + inch(Math.min(...pockets)).replace(' in', '') + '–' + inch(Math.max(...pockets));
 
   applyFinish();
