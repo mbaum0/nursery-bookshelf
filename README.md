@@ -19,9 +19,9 @@ Controls in the model:
 
 | Part | Size |
 | --- | --- |
-| Overall | 48 W × 15¾ D × 44 H in |
+| Overall | 48 W × 19½ D × 44 H in |
 | Stock | ¾ in solid |
-| Display | 3 scalloped tiers + back panel; each tier is a 2 in lip so covers show; every pocket 3 in deep, floors about 9⅞ in apart |
+| Display | 4 scalloped tiers + back panel; each tier is a 2 in lip so covers show; every pocket 3 in deep, floors about 7⅜ in apart |
 | Joinery | Glue and 1¼ in pocket screws; no dadoes |
 | Cubbies | 3 openings, about 15 × 8⅞ in |
 | Tier lean | 5° back from vertical |
