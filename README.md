@@ -10,6 +10,7 @@ Controls in the model:
 
 - Scallops per tier and scallop depth
 - Scalloped or straight back panel
+- Books for scale: 0–12 front-facing books in real children's-book sizes, each with its size printed on the cover
 - Wood finishes (walnut, cherry, white oak, maple) or paint, including a custom colour picker
 - Baseboard trim height and thickness for the rear cutaway
 - Camera presets (¾, front, side) and a turntable
