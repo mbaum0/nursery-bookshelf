@@ -623,59 +623,74 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   const SHEET_W = 48, SHEET_L = 96, KERF = 0.125;
   let packCache = {key:'', result:null};
   function packSheets(parts){
+    // Strip layout: each sheet is ripped along its length (with the face grain) into strips, then each strip is
+    // crosscut into parts. Parts never turn, so their grain follows the sheet. A part narrower than its strip gets one
+    // trim rip after it's crosscut free. Ranked by fewest sheets, then matching parts (both sides, both dividers) sharing a
+    // strip, then fewest rip cuts, then the least trim waste.
     const items = [];
     parts.filter(p => !p.ply).forEach(p => { for (let q = 0; q < p.qty; q++) items.push({id:p.id, w:p.w, l:p.l}); });
     const key = JSON.stringify(items);
     if (packCache.key === key) return packCache.result;
     let seed = 11;
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const orders = [(a, b) => b.w * b.l - a.w * a.l, (a, b) => Math.max(b.w, b.l) - Math.max(a.w, a.l), (a, b) => b.l - a.l, (a, b) => b.w - a.w]
-      .map(o => items.slice().sort(o));
-    for (let i = 0; i < 400; i++){   // plus seeded shuffles; small enough to brute-force on every change
+    const byWidth = items.slice().sort((a, b) => b.w - a.w || b.l - a.l);
+    const orders = [byWidth];
+    for (let i = 0; i < 1500; i++){
       const o = items.slice();
       for (let j = o.length - 1; j > 0; j--){ const k = Math.floor(rnd() * (j + 1)); [o[j], o[k]] = [o[k], o[j]]; }
       orders.push(o);
     }
     let best = null;
-    orders.forEach(order => [0, 1].forEach(splitRule => {
-      const sheets = [], add = () => { sheets.push({free:[{x:0, y:0, w:SHEET_W + KERF, h:SHEET_L + KERF}], placed:[], cuts:[]}); };
-      add();
-      for (const it of order){
-        // parts are never turned: each part's length (its grain) runs along the sheet's face grain
-        const pw = it.w + KERF, ph = it.l + KERF;   // each part carries one kerf; the sheet gets one extra
-        let pick = null;
-        sheets.forEach((sh, si) => sh.free.forEach((f, fi) => {
-          if (pw > f.w + 1e-9 || ph > f.h + 1e-9) return;
-          const waste = f.w * f.h - pw * ph;
-          if (!pick || waste < pick.waste) pick = {si, fi, pw, ph, waste};
-        }));
-        if (!pick){ add(); pick = {si:sheets.length - 1, fi:0, pw, ph}; }
-        const sh = sheets[pick.si], f = sh.free.splice(pick.fi, 1)[0];
-        sh.placed.push({id:it.id, w:it.w, l:it.l, x:f.x, y:f.y});
-        const rw = f.w - pick.pw, rh = f.h - pick.ph;
-        // every cut runs edge to edge of the piece it splits (guillotine), so the order they're made in here is a
-        // valid order to saw them: a piece is always split after the cut that freed it
-        const fw = f.w - KERF, fh = f.h - KERF, xc = f.x + it.w + KERF/2, yc = f.y + it.l + KERF/2;
-        const cross = (w, x0) => sh.cuts.push({kind:'Crosscut', x1:x0, y1:yc, x2:x0 + w, y2:yc, piece:[w, 0], at:it.l});
-        const rip = (h) => sh.cuts.push({kind:'Rip', x1:xc, y1:f.y, x2:xc, y2:f.y + h, piece:[0, h], at:it.w});
-        if (splitRule ? rw < rh : rw >= rh){   // crosscut the whole piece first, then rip the part off its strip
-          if (rh > 0){ sh.free.push({x:f.x, y:f.y + pick.ph, w:f.w, h:rh}); cross(fw, f.x); sh.cuts[sh.cuts.length - 1].piece = [fw, fh]; }
-          if (rw > 0){ sh.free.push({x:f.x + pick.pw, y:f.y, w:rw, h:pick.ph}); rip(it.l); sh.cuts[sh.cuts.length - 1].piece = [fw, rh > 0 ? it.l : fh]; }
-        } else {                                // rip the whole piece first, then crosscut the part off its strip
-          if (rw > 0){ sh.free.push({x:f.x + pick.pw, y:f.y, w:rw, h:f.h}); rip(fh); sh.cuts[sh.cuts.length - 1].piece = [fw, fh]; }
-          if (rh > 0){ sh.free.push({x:f.x, y:f.y + pick.ph, w:pick.pw, h:rh}); cross(it.w, f.x); sh.cuts[sh.cuts.length - 1].piece = [rw > 0 ? it.w : fw, fh]; }
+    orders.forEach(order => {
+      // parts into strips: join a strip that already holds the same part, else the first that's wide and long enough
+      const strips = [];
+      order.forEach(it => {
+        const fits = s => it.w <= s.w + 1e-9 && s.used + KERF + it.l <= SHEET_L + KERF + 1e-9;
+        const s = strips.find(s => fits(s) && s.parts.some(p => p.id === it.id)) || strips.find(fits);
+        if (s){ s.parts.push(it); s.used += it.l + KERF; }
+        else strips.push({w:it.w, parts:[it], used:it.l + KERF});
+      });
+      // strips onto sheets, widest first, first fit across the 48 in
+      const sheets = [];
+      strips.slice().sort((a, b) => b.w - a.w).forEach(s => {
+        const sh = sheets.find(sh => sh.used + s.w + KERF <= SHEET_W + KERF + 1e-9);
+        if (sh){ sh.strips.push(s); sh.used += s.w + KERF; } else sheets.push({strips:[s], used:s.w + KERF});
+      });
+      const ids = {}; let split = 0;
+      strips.forEach((s, si) => s.parts.forEach(p => { if (p.id in ids && ids[p.id] !== si) split++; ids[p.id] = si; }));
+      const trims = strips.reduce((a, s) => a + s.parts.filter(p => p.w < s.w - 1e-6).length, 0);
+      const waste = strips.reduce((a, s) => a + s.parts.reduce((b, p) => b + (s.w - p.w) * p.l, 0), 0);
+      const cost = sheets.length * 1e7 + split * 1e5 + (strips.length + trims) * 1e3 + waste;
+      if (!best || cost < best.cost) best = {cost, sheets};
+    });
+    // positions and the cut sequence for each sheet: every strip rip first, then each strip's crosscuts, then its trims
+    const result = best.sheets.map(sh => {
+      const placed = [], cuts = [];
+      let x = 0, left = SHEET_W;
+      sh.strips.forEach((s, k) => {
+        s.x = x;
+        if (left - s.w > KERF + 1e-6){   // rip this strip off what's left of the sheet
+          cuts.push({kind:'Rip', x1:x + s.w + KERF/2, y1:0, x2:x + s.w + KERF/2, y2:SHEET_L, piece:[left, SHEET_L], at:s.w, strip:k + 1});
         }
-      }
-      // fewest sheets, then matching pieces (both sides, both dividers) cut from one sheet so grain and colour match,
-      // then the shortest run along the last sheet, so its offcut is as big as possible
-      const last = sheets[sheets.length - 1].placed, used = Math.max(...last.map(p => p.y + p.l));
-      const split = new Set(), seen = {};
-      sheets.forEach((sh, si) => sh.placed.forEach(p => { if (p.id in seen && seen[p.id] !== si) split.add(p.id); seen[p.id] = si; }));
-      const cost = sheets.length * 1e6 + split.size * 1e4 + used;
-      if (!best || cost < best.cost) best = {cost, sheets:sheets.map(sh => ({parts:sh.placed, cuts:sh.cuts}))};
-    }));
-    packCache = {key, result:best.sheets};
-    return best.sheets;
+        left -= s.w + KERF; x += s.w + KERF;
+      });
+      sh.strips.forEach((s, k) => {
+        let y = 0, rest = SHEET_L;
+        s.parts.forEach(p => {
+          placed.push({id:p.id, w:p.w, l:p.l, x:s.x, y});
+          if (rest - p.l > KERF + 1e-6) cuts.push({kind:'Crosscut', x1:s.x, y1:y + p.l + KERF/2, x2:s.x + s.w, y2:y + p.l + KERF/2, piece:[s.w, rest], at:p.l, strip:k + 1});
+          rest -= p.l + KERF; y += p.l + KERF;
+        });
+        y = 0;
+        s.parts.forEach(p => {
+          if (p.w < s.w - 1e-6) cuts.push({kind:'Rip', trim:true, x1:s.x + p.w + KERF/2, y1:y, x2:s.x + p.w + KERF/2, y2:y + p.l, piece:[s.w, p.l], at:p.w, strip:k + 1, id:p.id});
+          y += p.l + KERF;
+        });
+      });
+      return {parts:placed, cuts, strips:sh.strips.map(s => ({x:s.x, w:s.w, ids:s.parts.map(p => p.id)}))};
+    });
+    packCache = {key, result};
+    return result;
   }
   function sideSheetMarks(X, Y){
     // the side's layout points and cut-outs, measured from the blank's edges (height runs along X, depth along Y)
@@ -714,12 +729,17 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       return '<line x1="' + X1 + '" y1="' + Y1 + '" x2="' + X2 + '" y2="' + Y2 + '" class="pcut"/>' +
         '<circle cx="' + mx + '" cy="' + my + '" r="1.05" class="pnum"/><text x="' + mx + '" y="' + (my + 0.42) + '" class="pnt">' + (k + 1) + '</text>';
     }).join('');
-    return '<figure class="sheet"><svg viewBox="-1 -5 98 55" role="img" aria-label="Sheet ' + n + ' of ' + total + ': numbered saw cuts and part shapes on a 4 by 8 foot sheet">' +
+    return '<figure class="sheet"><svg viewBox="-1 -5 101 55" role="img" aria-label="Sheet ' + n + ' of ' + total + ': numbered saw cuts and part shapes on a 4 by 8 foot sheet">' +
       '<text x="0" y="-1.6" class="pa">Sheet ' + n + (total > 1 ? ' of ' + total : '') + ' · 48 × 96 in · face grain →</text>' +
-      '<rect x="0" y="0" width="' + SHEET_L + '" height="' + SHEET_W + '" class="ps"/>' + parts + cuts + '</svg>' +
-      '<figcaption>Red numbered lines are the straight saw cuts, in order. Shaded outlines are the final shapes, cut with a jigsaw or bandsaw once the part is free. A dashed edge gets the ' + LEAN_DEG + '° bevel.</figcaption></figure>' +
-      table(['Cut', 'Type', 'Piece being cut (W × L)', 'Cut off'], sheet.cuts.map((c, k) => [k + 1, c.kind + (c.kind === 'Rip' ? ' (with the grain)' : ' (across the grain)'),
-        frac(c.piece[0]) + ' × ' + frac(c.piece[1]), frac(c.at) + (c.kind === 'Rip' ? ' wide strip, from the edge' : ' long, from the end')]));
+      '<rect x="0" y="0" width="' + SHEET_L + '" height="' + SHEET_W + '" class="ps"/>' + parts + cuts +
+      // strip labels down the right-hand end
+      sheet.strips.map((st, k) => '<text x="' + (SHEET_L + 0.5) + '" y="' + f2(st.x + st.w / 2 + 0.4) + '" class="pa">S' + (k + 1) + '</text>').join('') + '</svg>' +
+      '<figcaption>Red numbered lines are the straight saw cuts, in order. Rip the sheet into strips S1, S2… first, then crosscut each strip, then trim any part that is narrower than its strip. Shaded outlines are the final shapes, cut with a jigsaw or bandsaw once the part is free. A dashed edge gets the ' + LEAN_DEG + '° bevel.</figcaption></figure>' +
+      table(['Strip', 'Width', 'Parts'], sheet.strips.map((st, k) => ['S' + (k + 1), frac(st.w), st.ids.join(', ')])) +
+      table(['Cut', 'Strip', 'Type', 'Piece being cut (W × L)', 'Cut off'], sheet.cuts.map((c, k) => [k + 1, 'S' + c.strip,
+        c.trim ? 'Trim rip (' + c.id + ')' : c.kind === 'Rip' ? 'Rip (with the grain)' : 'Crosscut (across the grain)',
+        frac(c.piece[0]) + ' × ' + frac(c.piece[1]),
+        c.trim ? 'Rip ' + c.id + ' to ' + frac(c.at) + ' wide' : c.kind === 'Rip' ? frac(c.at) + ' wide strip, from the edge' : frac(c.at) + ' long, from the end']));
   }
 
   // ---- shop drawings: every part with every edge dimensioned ----
@@ -964,7 +984,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       '<h3>Sheet layout</h3>' +
       sheets.map((sh, i) => sheetSVG(sh, i + 1, sheets.length)).join('') +
       '<p class="fine">' + sheets.length + ' sheet' + (sheets.length > 1 ? 's' : '') + ' of ' + frac(T) + ' in ' + esc(veneer) + ', with a ' + frac(KERF) +
-      ' in kerf between parts. Make the cuts in the numbered order: each one runs edge to edge of the piece in front of you, so it works on a table saw or with a track saw. No part is turned to make it fit: every part\'s length runs with the sheet\'s face grain, so the grain matches the solid-wood design. ' + halfNote + 'Cut E (' + frac(e.w) + ' × ' + frac(e.l) +
+      ' in kerf between parts. Each sheet is ripped into full-length strips first, and parts that match (both sides, both dividers) share a strip, so there are as few rip cuts as possible. Every cut runs edge to edge of the piece in front of you, so it works on a table saw or with a track saw. No part is turned to make it fit: every part\'s length runs with the sheet\'s face grain, so the grain matches the solid-wood design. ' + halfNote + 'Cut E (' + frac(e.w) + ' × ' + frac(e.l) +
       ') from ' + frac(PLY) + ' in plywood. Plywood edges show their layers: edge-band the straight front edges, and fill and paint the scallops, or make F–J from solid wood for a clear finish.</p>' +
       '<details class="fine"><summary>Building from solid lumber instead</summary>' +
       table(['Part', 'Qty', 'Rough W × L', 'Boards per panel', 'Board feet'], parts.filter(p => !p.ply).map(p => [p.id + ' ' + p.name, p.qty, frac(p.rw) + ' × ' + frac(p.rl), p.boards, p.bf.toFixed(1)])) +
