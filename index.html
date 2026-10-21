@@ -156,7 +156,10 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     </div>
     <div class="group">
       <label class="check"><input id="back" type="checkbox"> Scallop the back panel too</label>
-      <label class="check"><input id="books" type="checkbox" checked> Show books for scale</label>
+    </div>
+    <div class="group">
+      <div class="row"><label for="books">Books for scale</label><span class="val" id="booksV">6</span></div>
+      <input id="books" type="range" min="0" max="12" step="1" value="6">
     </div>
     <div class="group">
       <div class="eyebrow">Finish · wood</div>
@@ -287,7 +290,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     {name:'Ink blue',    color:'#2F3E5C'},
     {name:'Benjamin Moore Soft Jazz (809)', color:'#81A5C0'}   // rgb(129, 165, 192)
   ];
-  const state = { count:7, depth:0.75, back:false, books:true, finish:{type:'wood', i:0}, spin:false, bbH:4.5, bbD:0.75, wall:true };
+  const state = { count:7, depth:0.75, back:false, books:6, finish:{type:'wood', i:0}, spin:false, bbH:4.5, bbD:0.75, wall:true };
   const notchH = () => state.bbH + CLEAR, notchD = () => state.bbD + CLEAR;
   const cubbyDepth = () => DEPTH - notchD() - PLY;     // cubby back sits flush with the cutaway
   const scallopDepth = () => Math.min(state.depth, (IW/state.count)/2, LIP/2);   // valleys stay at least half the lip up
@@ -447,13 +450,49 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     return s;
   }
 
+  // common children's book trim sizes (width × height, in), from small board books to large picture books
+  const BOOKS = [
+    {w:6.8, h:9.25, col:'#E9B7A6', band:'#3B6E8F'},
+    {w:8.5, h:10,   col:'#2F3B4C', band:'#E8D9A8'},
+    {w:5.5, h:6.5,  col:'#25356B', band:'#F2F0E8'},
+    {w:7,   h:8,    col:'#F2EEE6', band:'#C2563A'},
+    {w:10,  h:8,    col:'#7E8F5A', band:'#F4E3B5'},
+    {w:4.5, h:5,    col:'#2E6B4B', band:'#E9A3B9'},
+    {w:8,   h:9.5,  col:'#F4D58D', band:'#2F3B4C'},
+    {w:6,   h:6,    col:'#C2563A', band:'#F2EEE6'},
+    {w:9,   h:11,   col:'#3B6E8F', band:'#F4D58D'},
+    {w:7.5, h:7.5,  col:'#E8D9A8', band:'#7E8F5A'},
+    {w:5,   h:7,    col:'#9AAA8F', band:'#25356B'},
+    {w:8.25, h:10.25, col:'#DDB3A4', band:'#2E6B4B'}
+  ];
+  const num = v => String(+v.toFixed(2));
+  function coverTexture(b){
+    // a plain cover (title band and a round picture) with the book's trim size printed on it
+    const W = 256, H = Math.round(256 * b.h / b.w), c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.fillStyle = b.col; g.fillRect(0, 0, W, H);
+    // the size goes in the title band at the top, which stays visible above the lip in front
+    const bandH = Math.max(H * 0.13, W * 0.2);
+    g.fillStyle = b.band; g.fillRect(W * 0.1, H * 0.08, W * 0.8, bandH);
+    g.beginPath(); g.arc(W / 2, H * 0.08 + bandH + (H - H * 0.08 - bandH) * 0.45, Math.min(W, H) * 0.2, 0, Math.PI * 2); g.fill();
+    const rgb = parseInt(b.band.slice(1), 16), lum = 0.299 * (rgb >> 16) + 0.587 * (rgb >> 8 & 255) + 0.114 * (rgb & 255);
+    g.fillStyle = lum > 150 ? '#24201C' : '#FFFFFF';
+    g.font = '650 ' + Math.round(W * 0.13) + 'px system-ui, -apple-system, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(num(b.w) + ' × ' + num(b.h), W / 2, H * 0.08 + bandH / 2);
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tex;
+  }
+
   let model = null;
   function build(){
     if (model){
       // books, wall and trim get fresh materials each build; the two wood materials are shared
       model.traverse(o => {
         if (o.geometry) o.geometry.dispose();
-        if (o.material) [].concat(o.material).forEach(m => { if (m !== woodMat && m !== woodBoxMat) m.dispose(); });
+        if (o.material) [].concat(o.material).forEach(m => { if (m !== woodMat && m !== woodBoxMat){ if (m.map) m.map.dispose(); m.dispose(); } });
       });
       scene.remove(model);
     }
@@ -513,15 +552,8 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       m.position.set(0, s.y - T/2, -(s.front + s.depth/2));
     }
 
-    // books for scale (plain, untitled covers)
-    if (state.books){
-      const books = [
-        {pocket:2, x:-9,  w:8.5, h:10, col:'#2F3B4C', band:'#E8D9A8'},
-        {pocket:1, x:-3,  w:8,   h:9.5, col:'#E9B7A6', band:'#3B6E8F'},
-        {pocket:1, x:5.5, w:5.5, h:6.5, col:'#25356B', band:'#F2F0E8'},
-        {pocket:0, x:1.5, w:7,   h:8,  col:'#F2EEE6', band:'#C2563A'},
-        {pocket:2, x:11,  w:4.5, h:5,  col:'#2E6B4B', band:'#E9A3B9'}
-      ];
+    // books for scale: real children's-book sizes, front-facing, spread across the pockets from the bottom up
+    if (state.books > 0){
       // a row of spine-out books in the left cubby
       const spines = ['#C2563A','#2F3B4C','#E8D9A8','#3B6E8F','#7E8F5A','#E9B7A6','#25356B'];
       let sx = -IW/2 + 0.4;
@@ -532,23 +564,23 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
         m.position.set(sx + th/2, FOOT + T + h/2, -5.2);
         model.add(m); sx += th + 0.05;
       });
-      books.forEach(b => {
-        const ys = bottoms[b.pocket+1];
-        const g = new THREE.Group();
+      const cursor = floors.map(() => -IW/2 + 1.5);   // next free x in each pocket
+      BOOKS.slice(0, state.books).forEach((b, k) => {
+        // try pockets round-robin from the bottom; skip a book that fits nowhere
+        let p = -1;
+        for (let t = 0; t < POCKETS && p < 0; t++){ const q = (k + t) % POCKETS; if (cursor[q] + b.w <= IW/2 - 1) p = q; }
+        if (p < 0) return;
+        const x = cursor[p] + b.w / 2; cursor[p] += b.w + 1.5;
+        const ys = bottoms[p + 1], g = new THREE.Group();
+        const page = () => new THREE.MeshStandardMaterial({color:'#F4F0E6', roughness:0.9});
+        const cover = new THREE.MeshStandardMaterial({map:coverTexture(b), roughness:0.7});
         const body = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, 0.38),
-          [0,1,2,3].map(()=>new THREE.MeshStandardMaterial({color:'#F4F0E6', roughness:0.9}))
-          .concat([new THREE.MeshStandardMaterial({color:b.col, roughness:0.7}), new THREE.MeshStandardMaterial({color:b.col, roughness:0.7})]));
+          [page(), page(), page(), page(), cover, new THREE.MeshStandardMaterial({color:b.col, roughness:0.7})]);
         body.castShadow = body.receiveShadow = true;
-        body.position.y = b.h/2;
+        body.position.y = b.h / 2;
         g.add(body);
-        const band = new THREE.Mesh(new THREE.PlaneGeometry(b.w*0.7, b.h*0.14), new THREE.MeshStandardMaterial({color:b.band, roughness:0.7}));
-        band.position.set(0, b.h*0.78, 0.195);
-        g.add(band);
-        const art = new THREE.Mesh(new THREE.CircleGeometry(Math.min(b.w,b.h)*0.22, 40), new THREE.MeshStandardMaterial({color:b.band, roughness:0.7}));
-        art.position.set(0, b.h*0.4, 0.196);
-        g.add(art);
         g.rotation.x = -LEAN;
-        g.position.set(b.x, ys, -(zAt(b.pocket+1, ys) - 0.22));
+        g.position.set(x, ys, -(zAt(p + 1, ys) - 0.22));
         model.add(g);
       });
     }
@@ -985,7 +1017,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     $('cutBody').innerHTML =
       '<h3>Parts list</h3>' +
       table(['Part', 'Name', 'Qty', 'T', 'W', 'L (grain)', 'Notes'], parts.map(p => [p.id, p.name, p.qty, frac(p.t), frac(p.w), frac(p.l), p.note])) +
-      '<p class="fine">Finished sizes in inches, rounded to 1/16. L runs with the grain. B, C and F–L are ' + frac(IW) +
+      '<p class="fine">Finished sizes in inches, rounded to 1/16. L runs with the grain. B, C and ' + BOARD_IDS[0] + '–' + SHELF_IDS[SHELF_IDS.length - 1] + ' are ' + frac(IW) +
       ' long, the distance between the sides. Tier widths are measured along the face, from the long point of the bevel to the scallop tips.</p>' +
       '<h3>Cut list</h3>' +
       table(['Part', 'Qty', 'Width', 'Length', 'From', 'Angles'], parts.map(p => [p.id + ' ' + p.name, p.qty, frac(p.w), frac(p.l), where(p.id), p.ang])) +
@@ -994,7 +1026,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       sheets.map((sh, i) => sheetSVG(sh, i + 1, sheets.length)).join('') +
       '<p class="fine">' + sheets.length + ' sheet' + (sheets.length > 1 ? 's' : '') + ' of ' + frac(T) + ' in ' + esc(veneer) + ', with a ' + frac(KERF) +
       ' in kerf between parts. Each sheet is ripped into full-length strips first, and parts that match (both sides, both dividers) share a strip, so there are as few rip cuts as possible. Every cut runs edge to edge of the piece in front of you, so it works on a table saw or with a track saw. No part is turned to make it fit: every part\'s length runs with the sheet\'s face grain, so the grain matches the solid-wood design. ' + halfNote + 'Cut E (' + frac(e.w) + ' × ' + frac(e.l) +
-      ') from ' + frac(PLY) + ' in plywood. Plywood edges show their layers: edge-band the straight front edges, and fill and paint the scallops, or make F–J from solid wood for a clear finish.</p>' +
+      ') from ' + frac(PLY) + ' in plywood. Plywood edges show their layers: edge-band the straight front edges, and fill and paint the scallops, or make ' + BOARD_IDS[0] + '–' + BOARD_IDS[NB - 2] + ' from solid wood for a clear finish.</p>' +
       '<details class="fine"><summary>Building from solid lumber instead</summary>' +
       table(['Part', 'Qty', 'Rough W × L', 'Boards per panel', 'Board feet'], parts.filter(p => !p.ply).map(p => [p.id + ' ' + p.name, p.qty, frac(p.rw) + ' × ' + frac(p.rl), p.boards, p.bf.toFixed(1)])) +
       '<p>Stock: ' + esc(wood) + ', 4/4 rough, milled to ' + frac(T) + ' in. Parts need ' + bf.toFixed(1) + ' bd ft. Buy about ' + Math.ceil(bf * 1.3) + ' bd ft to cover defects and offcuts.</p></details>' +
@@ -1053,7 +1085,7 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   $('count').addEventListener('input', e => { state.count = +e.target.value; $('countV').textContent = state.count; build(); });
   $('depth').addEventListener('input', e => { state.depth = +e.target.value; $('depthV').textContent = state.depth.toFixed(2) + ' in'; build(); });
   $('back').addEventListener('change', e => { state.back = e.target.checked; build(); });
-  $('books').addEventListener('change', e => { state.books = e.target.checked; build(); });
+  $('books').addEventListener('input', e => { state.books = +e.target.value; $('booksV').textContent = state.books; build(); });
   const allSw = [];
   function select(btn, finish, name){
     state.finish = finish; applyFinish();
