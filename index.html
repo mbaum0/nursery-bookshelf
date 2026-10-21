@@ -151,8 +151,8 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
       <input id="count" type="range" min="3" max="14" step="1" value="7">
     </div>
     <div class="group">
-      <div class="row"><label for="depth">Scallop depth</label><span class="val" id="depthV">1.10 in</span></div>
-      <input id="depth" type="range" min="0.25" max="2.5" step="0.05" value="1.1">
+      <div class="row"><label for="depth">Scallop depth</label><span class="val" id="depthV">0.75 in</span></div>
+      <input id="depth" type="range" min="0.25" max="1" step="0.05" value="0.75">
     </div>
     <div class="group">
       <label class="check"><input id="back" type="checkbox"> Scallop the back panel too</label>
@@ -238,10 +238,14 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
   const LEAN = LEAN_DEG * Math.PI / 180;
   const K = Math.tan(LEAN);
   const NB = 4;                              // 3 tiers + back panel
-  // tier heights as fractions of the height above the cubby base, so the tiers re-space when OH changes
-  const above = f => HB + f * (OH - HB);
-  const tops = [0.3, 0.6, 0.85, 0.9875].map(above);
-  const bottoms = [HB, HB, above(0.325), above(0.575)];   // pocket floors: cubby top, then shelves
+  // Each tier is a low lip so the covers show: it rises LIP above the floor of the pocket it fronts. The three pocket
+  // floors are spaced evenly so every board behind a pocket (G, H and the back panel J) is the same height.
+  const LIP = 2;
+  const TOP_GAP = 0.4;                                     // back panel's top sits this far below the sides' top
+  const PITCH = (OH - TOP_GAP - HB - LIP) / 3;            // floor to floor
+  const floors = [0, 1, 2].map(k => HB + k * PITCH);      // pocket floors: cubby top, then shelves K and L
+  const tops = [...floors.map(f => f + LIP), OH - TOP_GAP];
+  const bottoms = [HB, ...floors];
 
   // Every pocket is the same depth (POCKET): the front tier's top sits on the sides' sloped front edge, and each
   // board behind stands POCKET behind the back face of the one in front, measured at its pocket floor.
@@ -277,10 +281,10 @@ figure.step img, figure.step .ph{display:block; width:100%; aspect-ratio:3/2; bo
     {name:'Ink blue',    color:'#2F3E5C'},
     {name:'Benjamin Moore Soft Jazz (809)', color:'#81A5C0'}   // rgb(129, 165, 192)
   ];
-  const state = { count:7, depth:1.1, back:false, books:true, finish:{type:'wood', i:0}, spin:false, bbH:4.5, bbD:0.75, wall:true };
+  const state = { count:7, depth:0.75, back:false, books:true, finish:{type:'wood', i:0}, spin:false, bbH:4.5, bbD:0.75, wall:true };
   const notchH = () => state.bbH + CLEAR, notchD = () => state.bbD + CLEAR;
   const cubbyDepth = () => DEPTH - notchD() - PLY;     // cubby back sits flush with the cutaway
-  const scallopDepth = () => Math.min(state.depth, (IW/state.count)/2);
+  const scallopDepth = () => Math.min(state.depth, (IW/state.count)/2, LIP/2);   // valleys stay at least half the lip up
   // pocket floor behind board i: front edge butts board i's back face, runs under all of board i+1
   const shelf = i => { const y = bottoms[i+1], front = zAt(i, y) + T / Math.cos(LEAN); return {y, front, depth: zAt(i+1, y) + T / Math.cos(LEAN) - front}; };
   const openW = (IW - 2*T) / 3;               // cubby opening width
